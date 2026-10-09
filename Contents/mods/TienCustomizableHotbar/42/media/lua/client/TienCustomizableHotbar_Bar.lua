@@ -1,6 +1,7 @@
 require "ISUI/ISPanel"
 require "ISUI/ISButton"
 require "TienCustomizableHotbar_Use"
+require "TienCustomizableHotbar_Dock"
 
 local Mod = TienCustomizableHotbar
 
@@ -46,6 +47,10 @@ function Mod.LoadSettings()
                 end
             elseif key == "labels" or key == "vertical" or key == "locked" or key == "gameLocked" then
                 s[key] = value == "true"
+            elseif key == "customDock" or key == "customAlign" or key == "gameDock" or key == "gameAlign" then
+                s[key] = value
+            elseif key == "customOffset" or key == "gameOffset" then
+                s[key] = tonumber(value)
             end
             line = reader:readLine()
         end
@@ -76,6 +81,14 @@ function Mod.SaveSettings()
     writeNumber(writer, "gameX", s.gameX)
     writeNumber(writer, "gameY", s.gameY)
     writer:write("gameLocked=" .. tostring(s.gameLocked == true) .. "\n")
+    for _, prefix in ipairs({ "custom", "game" }) do
+        local dock = Mod.Dock.Get(s, prefix)
+        if dock then
+            writer:write(prefix .. "Dock=" .. dock.side .. "\n")
+            writer:write(prefix .. "Align=" .. dock.align .. "\n")
+            writeNumber(writer, prefix .. "Offset", dock.offset)
+        end
+    end
     writer:close()
 end
 
@@ -349,7 +362,7 @@ function Bar:new()
     setmetatable(o, self)
     self.__index = self
     o.background = false
-    o.moveWithMouse = not Mod.settings.locked
+    o.moveWithMouse = false
     o.buttons = {}
     o.cache = {}
     o.scale = 1
@@ -400,7 +413,7 @@ function Bar:rebuild()
         self:setWidth(length)
         self:setHeight(slotHeight + edge * 2)
     end
-    self.moveWithMouse = not s.locked
+    self.moveWithMouse = false
     self.builtVersion = Mod.version
     self.builtPlayer = player
     self.builtSlots = player and Mod.Data(player).slots or nil
@@ -579,6 +592,11 @@ function Mod.DrawGrip(element, edge, vertical)
 end
 
 function Bar:prerender()
+    if self.moving then
+        self:dragUpdate()
+    else
+        self:followDock()
+    end
     self:drawRectStatic(0, 0, self.width, self.height, 0.5, 0, 0, 0)
     self:drawRectBorderStatic(0, 0, self.width, self.height, BORDER.a, BORDER.r, BORDER.g, BORDER.b)
     if not Mod.settings.locked then
@@ -700,6 +718,7 @@ end
 
 function Bar:update()
     ISPanel.update(self)
+    self:followDock()
     self:refreshCache(false)
     self:track()
     self:updateItemTooltip()
@@ -718,18 +737,116 @@ function Bar:close()
     self:removeFromUIManager()
 end
 
+function Bar:isOnHandle(x, y)
+    local edge = (self.spacing or SPACING) + 1
+    if Mod.settings.vertical then
+        return y >= 0 and y < edge and x >= 0 and x < self.width
+    end
+    return x >= 0 and x < edge and y >= 0 and y < self.height
+end
+
+function Bar:followDock()
+    if self.moving then
+        return
+    end
+    local dock = Mod.Dock.Get(Mod.settings, "custom")
+    local hotbar = getPlayerHotbar(0)
+    if not dock or not hotbar then
+        return
+    end
+    if Mod.GameHotbar then
+        Mod.GameHotbar.Place(hotbar)
+    end
+    local x, y = Mod.Dock.Position(self.width, self.height, Mod.Dock.Rect(hotbar), dock)
+    if x ~= self:getX() then
+        self:setX(x)
+    end
+    if y ~= self:getY() then
+        self:setY(y)
+    end
+    self:clampToScreen()
+end
+
+function Bar:onMouseDown(x, y)
+    self.moving = false
+    if Mod.settings.locked or not self:isOnHandle(x, y) then
+        return true
+    end
+    self.moving = true
+    self.dragMoved = false
+    self.pendingDock = nil
+    self.dragAnchor = { mx = getMouseX(), my = getMouseY(), x = self:getX(), y = self:getY() }
+    self:bringToTop()
+    return true
+end
+
+function Bar:dragUpdate()
+    local anchor = self.dragAnchor
+    if not self.moving or not anchor then
+        return
+    end
+    if not isMouseButtonDown(0) then
+        self:endBarDrag()
+        return
+    end
+    local x = anchor.x + getMouseX() - anchor.mx
+    local y = anchor.y + getMouseY() - anchor.my
+    if not self.dragMoved then
+        if math.abs(x - anchor.x) + math.abs(y - anchor.y) < 3 then
+            return
+        end
+        self.dragMoved = true
+        Mod.Dock.Set(Mod.settings, "custom", nil)
+    end
+    local dock = nil
+    local hotbar = getPlayerHotbar(0)
+    if hotbar and hotbar:isVisible() and not Mod.Dock.Get(Mod.settings, "game") then
+        x, y, dock = Mod.Dock.Snap(x, y, self.width, self.height, Mod.Dock.Rect(hotbar))
+    end
+    self.pendingDock = dock
+    self:setX(x)
+    self:setY(y)
+end
+
+function Bar:endBarDrag()
+    if not self.moving then
+        return
+    end
+    self.moving = false
+    self.dragAnchor = nil
+    if self.dragMoved then
+        if self.pendingDock then
+            Mod.Dock.Set(Mod.settings, "custom", self.pendingDock)
+            Mod.Dock.Set(Mod.settings, "game", nil)
+        end
+        self:rememberPosition()
+        Mod.SaveSettings()
+    end
+    self.dragMoved = false
+    self.pendingDock = nil
+end
+
+function Bar:onMouseMove(dx, dy)
+    ISPanel.onMouseMove(self, dx, dy)
+    self:dragUpdate()
+end
+
+function Bar:onMouseMoveOutside(dx, dy)
+    ISPanel.onMouseMoveOutside(self, dx, dy)
+    self:dragUpdate()
+end
+
 function Bar:onMouseUp(x, y)
     if ISMouseDrag.dragging and not self.moving then
         self:dropItems(nil)
         return true
     end
-    ISPanel.onMouseUp(self, x, y)
-    self:rememberPosition()
+    self:endBarDrag()
+    return true
 end
 
 function Bar:onMouseUpOutside(x, y)
-    ISPanel.onMouseUpOutside(self, x, y)
-    self:rememberPosition()
+    self:endBarDrag()
 end
 
 function Bar:onRightMouseUp(x, y)
@@ -955,8 +1072,10 @@ function Bar:setSetting(key, value)
 end
 
 function Bar:resetPosition()
+    Mod.Dock.Set(Mod.settings, "custom", nil)
     self:defaultPosition()
     self:rememberPosition()
+    Mod.SaveSettings()
 end
 
 function Bar:addSettings(context)
@@ -988,9 +1107,6 @@ function Bar:addSettings(context)
         sub:setOptionChecked(locked, true)
     end
     sub:addOption(Mod.txt("ResetPosition"), self, Bar.resetPosition)
-    if Mod.GameHotbar then
-        Mod.GameHotbar.AddOptions(sub)
-    end
 end
 
 local function addKeyBindings()

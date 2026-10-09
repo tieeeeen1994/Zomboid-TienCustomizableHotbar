@@ -22,9 +22,20 @@ function Game.Place(hotbar)
     local s = Mod.settings
     local drag = hotbar.tchDrag
     local x, y
+    local dock = Mod.Dock.Get(s, "game")
     if drag and drag.moved then
         x = drag.x + getMouseX() - drag.mx
         y = drag.y + getMouseY() - drag.my
+        drag.pendingDock = nil
+        local bar = Mod.bar
+        if bar and bar:getIsVisible() and not Mod.Dock.Get(s, "custom") then
+            x, y, drag.pendingDock = Mod.Dock.Snap(x, y, hotbar.width, hotbar.height, Mod.Dock.Rect(bar))
+        end
+    elseif dock and Mod.bar then
+        if Mod.bar.moving then
+            Mod.bar:dragUpdate()
+        end
+        x, y = Mod.Dock.Position(hotbar.width, hotbar.height, Mod.Dock.Rect(Mod.bar), dock)
     elseif s.gameX and s.gameY then
         x = s.gameX - hotbar.width / 2
         y = s.gameY
@@ -73,21 +84,33 @@ local function checkDrag(hotbar)
     end
     if math.abs(getMouseX() - drag.mx) + math.abs(getMouseY() - drag.my) >= DRAG_THRESHOLD then
         drag.moved = true
+        Mod.Dock.Set(Mod.settings, "game", nil)
         hotbar:setCapture(true)
     end
 end
 
+local function isOnHandle(hotbar, x, y)
+    return x >= 0 and x < hotbar.margins + 1 and y >= 0 and y < hotbar.height
+end
+
 local function endDrag(hotbar)
     local drag = hotbar.tchDrag
-    if drag and drag.moved then
+    if not drag then
+        return false
+    end
+    if drag.moved then
         hotbar:setCapture(false)
         Game.Place(hotbar)
         hotbar.tchDrag = nil
+        if drag.pendingDock then
+            Mod.Dock.Set(Mod.settings, "game", drag.pendingDock)
+            Mod.Dock.Set(Mod.settings, "custom", nil)
+        end
         Game.Save(hotbar)
         return true
     end
     hotbar.tchDrag = nil
-    return false
+    return true
 end
 
 function Game.SetLocked(_, locked)
@@ -99,6 +122,7 @@ function Game.Reset()
     local s = Mod.settings
     s.gameX = nil
     s.gameY = nil
+    Mod.Dock.Set(s, "game", nil)
     Mod.SaveSettings()
     local hotbar = getPlayerHotbar(0)
     if hotbar then
@@ -121,6 +145,14 @@ local function install()
     end
     installed = true
 
+    local innerPrerender = ISHotbar.prerender
+    function ISHotbar:prerender()
+        if isOurs(self) then
+            Game.Place(self)
+        end
+        innerPrerender(self)
+    end
+
     local innerRender = ISHotbar.render
     function ISHotbar:render()
         innerRender(self)
@@ -137,7 +169,7 @@ local function install()
 
     local innerDown = ISHotbar.onMouseDown
     function ISHotbar:onMouseDown(x, y)
-        if isOurs(self) and not Mod.settings.gameLocked then
+        if isOurs(self) and not Mod.settings.gameLocked and isOnHandle(self, x, y) then
             self.tchDrag = { mx = getMouseX(), my = getMouseY(), x = self:getX(), y = self:getY(), moved = false }
         end
         if innerDown then

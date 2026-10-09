@@ -20,10 +20,14 @@ bag into your hands; press again and it goes back where it came from.
   the item is in your hands, the slot puts it away instead.
 - **Your keys.** Options > Key Bindings > **Tien's Customizable Hotbar**: 20 slot keys, none bound at first. Shift, Ctrl
   and Alt combinations work. Clicking a slot always works. (Binding 1-0 also fires the game's own hotbar.)
-- **Your layout.** Drag slots to reorder them and the bar by its frame; right-click the bar for size, item names,
+- **Your layout.** Drag slots to reorder them and the bar by the dotted handle at its left end; right-click the bar for size, item names,
   vertical, lock and reset position.
-- **The game's hotbar moves too.** Drag the game's own hotbar anywhere on the screen; it stays there. Right-click its
-  frame (or this bar's Hotbar settings) to lock it or put it back at the bottom.
+- **The game's hotbar moves too.** Drag the game's own hotbar anywhere on the screen by the same dotted handle; it stays there. Right-click its
+  frame to lock it or put it back at the bottom.
+- **The two bars snap together.** Drag one bar close to the other and it snaps flush against it (above, below or beside,
+  lined up by the edges or the centre). It stays docked there: it keeps its place when either bar grows or shrinks and
+  follows when you drag the other one. Drag it away by its own handle to undock it; hold Shift while dragging to move
+  without snapping.
 
 Like the game's hotbar, a slot does nothing while you are busy with another action, attacking or paused.
 

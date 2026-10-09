@@ -10,8 +10,8 @@ The Lua source has no comments on purpose. Non-obvious reasoning lives here; upd
 
 ## Status
 
-First implementation (2026-10-09), not yet run in game. Only checked with luaparser (syntax and free globals). No art
-yet: mod.info has no `poster` / `icon` and there is no `preview.png` (needed for the Workshop upload). See "To verify".
+First implementation 2026-10-09. The user has run it in game (dragging the game's hotbar works); the rest of "To verify"
+has not been confirmed. Lua checked with luaparser (syntax and free globals).
 
 ## Origin
 
@@ -76,10 +76,11 @@ from the item's menu like TienActionableHotbar.
     item's `ISToolTipInv` like vanilla's `update`. Vanilla's label names the attachment point; ours says where the
     item is (bag / hands / worn / not on you, "(not the one you assigned)"), where it goes back to, and a custom action.
     Kept from before because vanilla has no equivalent: the "+" slot, the amber (stand-in item) and blue (custom
-    action) dots, item names under the slots, vertical. The frame (the 10 px margin) drags the bar, like any ISPanel
-    with `moveWithMouse`; the admin hotbar's grip (three 3 px dots, `Mod.DrawGrip`) sits in the left margin (top when
-    vertical) while unlocked: the user missed it (2026-10-09). The game's hotbar gets the same grip in its left margin
-    while it is unlocked (`ISHotbar:render` wrapped, after vanilla's drawing).
+    action) dots, item names under the slots, vertical. Only the handle drags (user's choice, 2026-10-09): the admin
+    hotbar's grip (three 3 px dots, `Mod.DrawGrip`) in the left margin (top margin when vertical), shown while unlocked; `Bar:onMouseDown` lets
+    `ISPanel.onMouseDown` start a move only inside that margin (`isOnHandle`), and swallows presses elsewhere on the
+    frame. The game's hotbar gets the same grip and handle in its left margin while unlocked
+    (`ISHotbar:render` wrapped, after vanilla's drawing).
   - Reordering by drag (admin hotbar's code: threshold, capture, ghost, drop marker); off while locked.
   - Inventory drops: a slot's / the bar's `onMouseUp` with `ISMouseDrag.dragging` set and no press of its own takes the
     first dragged item carried by the player (onto a slot = replace its item, elsewhere = new slot), then ends the drag
@@ -98,16 +99,52 @@ from the item's menu like TienActionableHotbar.
     player's screen. Wrapped (at `OnGameStart`, outermost) to move it afterwards: while dragging to the drag position,
     else to the saved one, clamped to player 0's screen (`getPlayerScreen*`), keeping `FONT_HGT_SMALL` above it for the
     hover label. The centre x is saved, so it stays balanced when worn items add or remove slots.
-  - Drag = a press anywhere on it (vanilla has no `onMouseDown`; ISPanelJoypad's does nothing with `moveWithMouse`
-    off) that moves 6 px with the button held; `setCapture(true)` from then, and the release ends the drag instead of
-    reaching vanilla's `onMouseUp` (which would use the slot or drop a dragged item). A short click is untouched.
+  - Drag = a press on the handle (its left margin, `isOnHandle`; vanilla has no `onMouseDown`; ISPanelJoypad's does
+    nothing with `moveWithMouse` off) that moves 6 px with the button held; a press there that does not move is
+    swallowed too, since vanilla's `onMouseUp` would use the nearest slot (slot 1). Past 6 px `setCapture(true)`,
+    and the release ends the drag instead of reaching vanilla's `onMouseUp` (which would use the slot or drop a dragged item). Presses and clicks on the slots are untouched.
     `endDrag` must place from the drag **before** clearing `tchDrag`: `Place` without a drag goes to the saved
     position, so clearing first put the bar back on the old spot and saved that (every drag after the first snapped
     back, 2026-10-09). Player 0 only (vanilla hides the other players' hotbars).
   - Vanilla's `getSlotIndexAt` maps every point inside the bar, margins included, to the nearest slot, so a right-click
     on the frame is told apart with `isOnSlot` (slot rects from `margins`, `slotWidth`, `slotPad`, `slotHeight`); there
-    it opens Lock / Put back at the bottom, which are also at the end of this bar's Hotbar settings.
+    it opens Lock / Put back at the bottom. They used to be listed in this bar's Hotbar settings too, under its own
+    Lock / Reset: the user took them for this bar's and found the game's hotbar changing (2026-10-09), so each bar's
+    menu now only holds its own options.
+- `client/TienCustomizableHotbar_Dock.lua`: snapping and docking the two bars together (user's choice of "snap and
+  dock", flush, 2026-10-09).
+  - A dock = `{ side, align, offset }`: the docked bar sits `above` / `below` / `left` / `right` of the other, lined
+    up by `start` / `end` / `center` of the cross axis, or `offset` px from the other's start when no alignment was
+    within reach. Saved flat in the ini as `customDock/customAlign/customOffset` (our bar docked to the game's) and
+    `gameDock/gameAlign/gameOffset`; at most one is set (docking one clears the other), so there is never a cycle.
+  - `Snap(x, y, w, h, other)` during a drag: each side counts when the cross axes overlap and the edges are within
+    16 px (`SNAP`); the alignment within 16 px wins, else an offset; lowest total distance wins. Shift skips it. A bar
+    whose partner is docked to it never snaps (the partner follows it, so they could not meet anyway).
+  - Following happens every rendered frame (the user saw the docked bar trail behind, 2026-10-09): our bar in
+    `Bar:prerender` (`dragUpdate` while dragged, else `followDock`, then `clampToScreen`), the game's hotbar in a
+    wrapped `ISHotbar:prerender` → `Game.Place` (also still from vanilla's per-update `setSizeAndPosition`).
+    Positions set in a prerender draw that same frame. The follower first brings its leader up to date
+    (`followDock` calls `Game.Place(hotbar)`, `Game.Place` calls `Mod.bar:dragUpdate()` while our bar is dragged),
+    so the draw order of the two top-level elements does not cost a frame; no recursion, since only one is docked.
+    Both work from the other bar's live rect, so width changes (slots added,
+    a belt worn) and the other bar's drags carry over. A drag of the docked bar undocks it once it moves (our bar: 3
+    px; the game's: the 6 px drag threshold). Reset position clears the bar's dock.
+  - Our bar no longer uses ISPanel's `moveWithMouse` (relative `dx` moves would drift from the mouse after a snap):
+    `onMouseDown` on the handle keeps an anchor (mouse + bar position), `dragUpdate` places it at anchor + mouse delta
+    and snaps, `endBarDrag` stores the dock and saves; a release seen as `isMouseButtonDown(0) == false` also ends it.
 - Translations: `shared/Translate/EN/IG_UI.json` (`IGUI_TienCustomizableHotbar_*`), `UI.json` (key binding labels).
+
+- `scripts/make_art.py` (`python3 scripts/make_art.py`, Pillow): icon (128), poster and `preview.png` (512). Pack
+  reader, sticker, slot copied from TienActionableHotbar's script. Poster (third try, 2026-10-09): a small UI scene
+  like TienCustomizableLeftSidebar's art: a vanilla-looking inventory window (title bar, rows of item icons with grey
+  bars for names; water bottle, the assault rifle row lit gold, hammer, whiskey) with the green big hiking bag as a
+  sticker on its top-right corner, a gold curved arrow (`bez`, `curve`, `head`) from the rifle row down into the lit
+  slot 2 of the hotbar below (dotted grip, hunting knife, rifle, beta blockers, "+" slot). No key cap. Icon: one lit
+  slot holding the rifle, the bag sticker on its empty bottom-right corner. The user approved this one (2026-10-09).
+  Earlier tries the user called ugly: the
+  bag drawn huge with the rifle half out of its top; then Actionable Hotbar's layout (rifle rising from slot 1 with a
+  bag badge). Lesson: item icons are 32 px, so blown up 7-8x they look crude; keep them at 1-2x inside UI mock-ups
+  and let the layout tell the story. `fill_holes` keeps a sticker's white outline off see-through holes.
 
 ## To verify in game
 
@@ -121,6 +158,9 @@ from the item's menu like TienActionableHotbar.
 - Custom actions: whiskey > Drink > All from a bag; painkillers > Take Pills; flashlight > Turn on; "Equip Primary" on a
   bat toggles. The menu copy never flashes on screen.
 - Drag from the inventory onto a slot and onto the bar; reorder by drag; lock; vertical; names; sizes; position kept.
+- Docking: snap our bar above / below / beside the game's and the game's to ours; each alignment; drag the partner
+  (the docked one follows); add a slot / put on a belt (stays aligned); drag the docked one away (undocks); Shift
+  drag; restart (dock kept); vanilla's hover label over our bar when docked flush above it.
 - Side by side with the game's hotbar at Normal size: same frame, slot size, number, hover tint, label, tooltip, marker.
 - Game's hotbar: drag it, click its slots after (no slot used by the drag), drop an inventory item on it, put on a
   belt (slot count changes, stays centred where it was), right-click its frame; lock; put back; restart.
