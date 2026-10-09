@@ -7,23 +7,25 @@ local Mod = TienCustomizableHotbar
 local FONT_HGT_SMALL = getTextManager():getFontHeight(UIFont.Small)
 local FONT_HGT_MEDIUM = getTextManager():getFontHeight(UIFont.Medium)
 
-local SIZES = { 36, 44, 52, 60 }
-local SIZE_KEYS = { "SizeSmall", "SizeMedium", "SizeLarge", "SizeHuge" }
-local GRIP = 10
-local GAP = 3
+local SCALES = { 0.75, 1, 1.25 }
+local SIZE_KEYS = { "SizeSmall", "SizeNormal", "SizeLarge" }
+local SLOT = 60
+local SPACING = 10
+local ICON = 32
 local DRAG_THRESHOLD = 6
 local CACHE_MS = 250
 local TRACK_MS = 500
 local PRUNE_MS = 60000
 local MAX_SAME = 25
-local HELD = { r = 0.35, g = 0.75, b = 0.35 }
+local BORDER = { r = 0.8, g = 0.8, b = 0.8, a = 0.8 }
 local AMBER = { r = 1, g = 0.7, b = 0.2 }
 local BLUE = { r = 0.45, g = 0.7, b = 1 }
+local MARKER = { r = 0.35, g = 0.75, b = 0.35 }
 
 local KEY_SECTION = "[Customizable Hotbar]"
 
 local function defaultSettings()
-    return { size = 2, labels = false, vertical = false, locked = false }
+    return { size = 2, labels = false, vertical = false, locked = false, gameLocked = false }
 end
 
 Mod.settings = Mod.settings or defaultSettings()
@@ -35,14 +37,14 @@ function Mod.LoadSettings()
         local line = reader:readLine()
         while line do
             local key, value = string.match(line, "^(%a+)=(.*)$")
-            if key == "x" or key == "y" then
+            if key == "x" or key == "y" or key == "gameX" or key == "gameY" then
                 s[key] = tonumber(value)
             elseif key == "size" then
                 local n = tonumber(value)
-                if n and SIZES[n] then
+                if n and SCALES[n] then
                     s.size = n
                 end
-            elseif key == "labels" or key == "vertical" or key == "locked" then
+            elseif key == "labels" or key == "vertical" or key == "locked" or key == "gameLocked" then
                 s[key] = value == "true"
             end
             line = reader:readLine()
@@ -52,6 +54,12 @@ function Mod.LoadSettings()
     Mod.settings = s
 end
 
+local function writeNumber(writer, key, value)
+    if value then
+        writer:write(key .. "=" .. string.format("%d", math.floor(value)) .. "\n")
+    end
+end
+
 function Mod.SaveSettings()
     local writer = getFileWriter(Mod.FILE, true, false)
     if not writer then
@@ -59,19 +67,24 @@ function Mod.SaveSettings()
     end
     local s = Mod.settings
     writer:write("version=" .. string.format("%d", Mod.VERSION) .. "\n")
-    if s.x and s.y then
-        writer:write("x=" .. string.format("%d", math.floor(s.x)) .. "\n")
-        writer:write("y=" .. string.format("%d", math.floor(s.y)) .. "\n")
-    end
-    writer:write("size=" .. string.format("%d", s.size) .. "\n")
+    writeNumber(writer, "x", s.x)
+    writeNumber(writer, "y", s.y)
+    writeNumber(writer, "size", s.size)
     writer:write("labels=" .. tostring(s.labels == true) .. "\n")
     writer:write("vertical=" .. tostring(s.vertical == true) .. "\n")
     writer:write("locked=" .. tostring(s.locked == true) .. "\n")
+    writeNumber(writer, "gameX", s.gameX)
+    writeNumber(writer, "gameY", s.gameY)
+    writer:write("gameLocked=" .. tostring(s.gameLocked == true) .. "\n")
     writer:close()
 end
 
 local function circle()
     return getTexture("media/ui/circle.png")
+end
+
+local function equippedIcon()
+    return getTexture("media/ui/icon.png")
 end
 
 local function truncate(text, width, font)
@@ -103,6 +116,19 @@ local function endInventoryDrag()
     ISMouseDrag.dragging = nil
 end
 
+local function draggedCarriedItem(player)
+    local dragging = ISMouseDrag.dragging
+    if not player or type(dragging) ~= "table" then
+        return nil
+    end
+    for _, item in ipairs(ISInventoryPane.getActualItems(dragging)) do
+        if Mod.IsOnPlayer(player, item) then
+            return item
+        end
+    end
+    return nil
+end
+
 local function itemLabel(item)
     local name = item:getDisplayName()
     local extra = {}
@@ -118,14 +144,22 @@ local function itemLabel(item)
     return name
 end
 
-local function drawSlotIcon(element, slot, item, x, y, size, alpha)
+local function drawIcon(element, slot, item, cx, cy, scale, maxSize, alpha)
+    local tex = item and item:getTexture() or nil
+    if tex then
+        local w = math.min(tex:getWidth() * scale, maxSize)
+        local h = math.min(tex:getHeight() * scale, maxSize)
+        element:drawTextureScaled(tex, cx - w / 2, cy - h / 2, w, h, alpha, 1, 1, 1)
+        return
+    end
+    local size = math.min(ICON * scale, maxSize)
     if item then
-        element:drawItemIcon(item, x, y, alpha, size, size)
+        element:drawItemIcon(item, cx - size / 2, cy - size / 2, alpha, size, size)
         return
     end
     local script = Mod.ScriptItem(slot.type)
     if script then
-        element:drawScriptItemIcon(script, x, y, alpha, size, size)
+        element:drawScriptItemIcon(script, cx - size / 2, cy - size / 2, alpha, size, size)
     end
 end
 
@@ -143,86 +177,72 @@ function SlotButton:new(x, y, width, height, bar, slot, index)
     return o
 end
 
+function SlotButton:isDropTarget()
+    return ISMouseDrag.dragging ~= nil and not self.pressed and not self.bar.dragging and self:isMouseOver()
+end
+
 function SlotButton:prerender()
     local w, h = self.width, self.height
-    local dropping = ISMouseDrag.dragging ~= nil and not self.pressed and self:isMouseOver() and not self.bar.dragging
-    if not self.slot then
-        self:drawRect(0, 0, w, h, 0.6, 0.05, 0.05, 0.05)
-        self:drawRectBorder(0, 0, w, h, 0.6, 0.4, 0.4, 0.4)
-        if self:isMouseOver() then
-            self:drawRect(0, 0, w, h, 0.12, 1, 1, 1)
-        end
-        if dropping then
-            self:drawRectBorder(1, 1, w - 2, h - 2, 1, HELD.r, HELD.g, HELD.b)
-        end
-        self:updateTooltip()
-        return
-    end
     if self.bar.dragging == self then
-        self:drawRectBorder(0, 0, w, h, 0.6, 0.6, 0.6, 0.6)
         return
     end
-    local entry = self.bar.cache[self.slot] or {}
-    local item = entry.item
-    local player = getSpecificPlayer(0)
-    local held = item ~= nil and player ~= nil and Mod.IsHeldOrWorn(player, item)
-    if not item then
-        self:drawRect(0, 0, w, h, 0.8, 0.04, 0.04, 0.04)
-        self:drawRectBorder(0, 0, w, h, 1, 0.22, 0.22, 0.22)
-    elseif held then
-        self:drawRect(0, 0, w, h, 0.45, HELD.r, HELD.g, HELD.b)
-        self:drawRectBorder(0, 0, w, h, 1, math.min(1, HELD.r + 0.25), math.min(1, HELD.g + 0.25), math.min(1, HELD.b + 0.25))
-    else
-        self:drawRect(0, 0, w, h, 0.85, 0.07, 0.07, 0.07)
-        self:drawRectBorder(0, 0, w, h, 1, 0.42, 0.42, 0.42)
-    end
-    if dropping then
-        self:drawRectBorder(1, 1, w - 2, h - 2, 1, HELD.r, HELD.g, HELD.b)
-    end
+    self:drawRectBorderStatic(0, 0, w, h, BORDER.a, BORDER.r, BORDER.g, BORDER.b)
     if self:isMouseOver() then
-        if item then
-            self:drawRect(0, 0, w, h, 0.12, 1, 1, 1)
+        local r, g, b = 1, 1, 1
+        if self:isDropTarget() and not draggedCarriedItem(getSpecificPlayer(0)) then
+            r, g, b = 1, 0, 0
         end
-        self.tooltip = not self.bar.dragging and not ISMouseDrag.dragging and self.bar:tooltipFor(self) or nil
+        self:drawRect(0, 0, w, h, 0.2, r, g, b)
     end
-    self:updateTooltip()
 end
 
 function SlotButton:render()
     if self.bar.dragging == self then
         return
     end
-    local cell = self.bar.cell
-    if not self.slot then
-        self:drawTextCentre("+", self.width / 2, (cell - FONT_HGT_MEDIUM) / 2, 0.85, 0.85, 0.85, 1, UIFont.Medium)
+    local bar = self.bar
+    local scale = bar.scale
+    local cell = bar.cell
+    local player = getSpecificPlayer(0)
+    local dropped = self:isDropTarget() and draggedCarriedItem(player) or nil
+
+    if not self.slot and not dropped then
+        self:drawTextCentre("+", self.width / 2, (cell - FONT_HGT_MEDIUM) / 2, 1, 1, 1, 0.6, UIFont.Medium)
         return
     end
-    local pad = math.max(3, math.floor(cell / 10))
-    local iconSize = cell - pad * 2
-    local entry = self.bar.cache[self.slot] or {}
-    local item = entry.item
-    local alpha = item and 1 or 0.3
-    drawSlotIcon(self, self.slot, item, (self.width - iconSize) / 2, pad, iconSize, alpha)
 
-    local tex = circle()
-    local dot = math.max(6, math.floor(cell / 6))
-    if tex and item and not entry.exact then
-        self:drawTextureScaled(tex, self.width - dot - 2, 2, dot, dot, 1, AMBER.r, AMBER.g, AMBER.b)
+    local entry = self.slot and bar.cache[self.slot] or {}
+    local item = dropped or entry.item
+    local alpha = item and 1 or 0.25
+    drawIcon(self, self.slot, item, self.width / 2, cell / 2, scale, cell - 4, alpha)
+    if dropped or not self.slot then
+        return
     end
-    if tex and self.slot.action then
-        self:drawTextureScaled(tex, self.width - dot - 2, cell - dot - 2, dot, dot, math.max(alpha, 0.6), BLUE.r, BLUE.g, BLUE.b)
+
+    if item and player and Mod.IsHeldOrWorn(player, item) then
+        local tex = equippedIcon()
+        if tex then
+            local tw, th = tex:getWidth() * scale, tex:getHeight() * scale
+            self:drawTextureScaled(tex, self.width - tw - 5 * scale, cell - th - 5 * scale, tw, th, 1, 1, 1, 1)
+        end
     end
-    if self.keyText then
-        self:drawText(self.keyText, 3, 1, 1, 1, 1, 0.85, UIFont.Small)
+    local dotTex = circle()
+    local dot = math.max(5, math.floor(8 * scale))
+    if dotTex and item and not entry.exact then
+        self:drawTextureScaled(dotTex, self.width - dot - 3, 3, dot, dot, 1, AMBER.r, AMBER.g, AMBER.b)
     end
+    if dotTex and self.slot.action then
+        self:drawTextureScaled(dotTex, 3, cell - dot - 3, dot, dot, 1, BLUE.r, BLUE.g, BLUE.b)
+    end
+    self:drawText(self.keyText or string.format("%d", self.index), 3, 1, 1, 1, 1, 1, UIFont.Small)
     if Mod.settings.labels then
         local name = item and item:getDisplayName() or Mod.SlotName(self.slot)
-        self:drawTextCentre(truncate(name, self.width - 4, UIFont.Small), self.width / 2, cell, 0.95, 0.95, 0.95, math.max(alpha, 0.5), UIFont.Small)
+        self:drawTextCentre(truncate(name, self.width - 4, UIFont.Small), self.width / 2, cell, 1, 1, 1, math.max(alpha, 0.5), UIFont.Small)
     end
 end
 
 function DragGhost:new(button)
-    local o = ISPanel:new(getMouseX(), getMouseY(), button.bar.cell, button.bar.cell)
+    local o = ISPanel:new(getMouseX(), getMouseY(), button.width, button.height)
     setmetatable(o, self)
     self.__index = self
     o.button = button
@@ -233,11 +253,11 @@ end
 function DragGhost:prerender()
     self:setX(getMouseX() - self.width / 2)
     self:setY(getMouseY() - self.height / 2)
-    self:drawRect(0, 0, self.width, self.height, 0.6, 0.07, 0.07, 0.07)
-    self:drawRectBorder(0, 0, self.width, self.height, 0.9, 0.8, 0.8, 0.8)
-    local pad = math.max(3, math.floor(self.width / 10))
-    local entry = self.button.bar.cache[self.button.slot] or {}
-    drawSlotIcon(self, self.button.slot, entry.item, pad, pad, self.width - pad * 2, 0.9)
+    self:drawRectStatic(0, 0, self.width, self.height, 0.5, 0, 0, 0)
+    self:drawRectBorderStatic(0, 0, self.width, self.height, BORDER.a, BORDER.r, BORDER.g, BORDER.b)
+    local bar = self.button.bar
+    local entry = bar.cache[self.button.slot] or {}
+    drawIcon(self, self.button.slot, entry.item, self.width / 2, bar.cell / 2, bar.scale, bar.cell - 4, 0.9)
 end
 
 function SlotButton:onMouseDown(x, y)
@@ -332,7 +352,8 @@ function Bar:new()
     o.moveWithMouse = not Mod.settings.locked
     o.buttons = {}
     o.cache = {}
-    o.cell = SIZES[2]
+    o.scale = 1
+    o.cell = SLOT
     o.builtVersion = -1
     o.lastCache = 0
     o.lastTrack = 0
@@ -350,36 +371,34 @@ function Bar:rebuild()
     local player = getSpecificPlayer(0)
     local slots = player and Mod.Slots(player) or {}
     local s = Mod.settings
-    local fontExtra = math.max(0, (getCore():getOptionFontSizeReal() or 1) - 1) * 4
-    self.cell = (SIZES[s.size] or SIZES[2]) + fontExtra
-    local labelHeight = s.labels and (FONT_HGT_SMALL + 2) or 0
-    local slotWidth = s.labels and (self.cell + 24) or self.cell
-    local slotHeight = self.cell + labelHeight
+    self.scale = SCALES[s.size] or 1
+    self.cell = math.floor(SLOT * self.scale + 0.5)
+    self.spacing = math.floor(SPACING * self.scale + 0.5)
+    local slotWidth = self.cell
+    local slotHeight = self.cell + (s.labels and (FONT_HGT_SMALL + 2) or 0)
+    local edge = self.spacing + 1
 
-    local pos = GRIP
+    local pos = edge
     for i = 1, #slots + 1 do
         local slot = slots[i]
-        local x, y = pos, 3
+        local x, y = pos, edge
         if s.vertical then
-            x, y = 3, pos
+            x, y = edge, pos
         end
         local button = SlotButton:new(x, y, slotWidth, slotHeight, self, slot, slot and i or nil)
         button:initialise()
         button:instantiate()
-        if not slot then
-            button.tooltip = Mod.txt("AddTooltip")
-        end
         self:addChild(button)
         table.insert(self.buttons, button)
-        pos = pos + (s.vertical and slotHeight or slotWidth) + GAP
+        pos = pos + (s.vertical and slotHeight or slotWidth) + self.spacing
     end
-
+    local length = pos - self.spacing + edge
     if s.vertical then
-        self:setWidth(slotWidth + 6)
-        self:setHeight(pos - GAP + 3)
+        self:setWidth(slotWidth + edge * 2)
+        self:setHeight(length)
     else
-        self:setWidth(pos - GAP + 3)
-        self:setHeight(slotHeight + 6)
+        self:setWidth(length)
+        self:setHeight(slotHeight + edge * 2)
     end
     self.moveWithMouse = not s.locked
     self.builtVersion = Mod.version
@@ -460,13 +479,13 @@ end
 function Bar:defaultPosition()
     local core = getCore()
     self:setX(math.floor(core:getScreenWidth() / 2 - self.width / 2))
-    self:setY(math.floor(core:getScreenHeight() - self.height - 110))
+    self:setY(math.floor(core:getScreenHeight() - self.height - 100))
 end
 
 function Bar:clampToScreen()
     local core = getCore()
     local x = math.max(0, math.min(self:getX(), core:getScreenWidth() - self.width))
-    local y = math.max(0, math.min(self:getY(), core:getScreenHeight() - self.height))
+    local y = math.max(FONT_HGT_SMALL, math.min(self:getY(), core:getScreenHeight() - self.height))
     if x ~= self:getX() then
         self:setX(x)
     end
@@ -534,30 +553,148 @@ function Bar:drawDropMarker()
         if not last then
             return
         end
-        position = vertical and (last:getBottom() + GAP) or (last:getRight() + GAP)
+        position = vertical and (last:getBottom() + self.spacing) or (last:getRight() + self.spacing)
     end
+    local half = math.floor(self.spacing / 2) + 1
     if vertical then
-        self:drawRect(3, position - 3, self.width - 6, 3, 1, HELD.r, HELD.g, HELD.b)
+        self:drawRect(2, position - half - 1, self.width - 4, 2, 1, MARKER.r, MARKER.g, MARKER.b)
     else
-        self:drawRect(position - 3, 3, 3, self.height - 6, 1, HELD.r, HELD.g, HELD.b)
+        self:drawRect(position - half - 1, 2, 2, self.height - 4, 1, MARKER.r, MARKER.g, MARKER.b)
+    end
+end
+
+function Mod.DrawGrip(element, edge, vertical)
+    local tex = circle()
+    if not tex then
+        return
+    end
+    local across = math.floor((edge - 3) / 2)
+    for i = 0, 2 do
+        if vertical then
+            element:drawTextureScaled(tex, element.width / 2 - 7 + i * 5, across, 3, 3, 0.8, 0.7, 0.7, 0.7)
+        else
+            element:drawTextureScaled(tex, across, element.height / 2 - 7 + i * 5, 3, 3, 0.8, 0.7, 0.7, 0.7)
+        end
     end
 end
 
 function Bar:prerender()
-    self:drawRect(0, 0, self.width, self.height, 0.55, 0, 0, 0)
-    self:drawRectBorder(0, 0, self.width, self.height, 0.8, 0.35, 0.35, 0.35)
+    self:drawRectStatic(0, 0, self.width, self.height, 0.5, 0, 0, 0)
+    self:drawRectBorderStatic(0, 0, self.width, self.height, BORDER.a, BORDER.r, BORDER.g, BORDER.b)
+    if not Mod.settings.locked then
+        Mod.DrawGrip(self, (self.spacing or SPACING) + 1, Mod.settings.vertical)
+    end
     if self.dragging then
         self:drawDropMarker()
     end
-    local tex = circle()
-    if tex and not Mod.settings.locked then
-        for i = 0, 2 do
-            if Mod.settings.vertical then
-                self:drawTextureScaled(tex, self.width / 2 - 7 + i * 5, 3, 3, 3, 0.8, 0.7, 0.7, 0.7)
-            else
-                self:drawTextureScaled(tex, 3, self.height / 2 - 7 + i * 5, 3, 3, 0.8, 0.7, 0.7, 0.7)
-            end
+end
+
+function Bar:hoverLines(button)
+    if not button.slot then
+        return { Mod.txt("AddLabel") }
+    end
+    local player = getSpecificPlayer(0)
+    local entry = self.cache[button.slot] or {}
+    local item = entry.item
+    local lines = {}
+    if ISMouseDrag.dragging and not button.pressed then
+        local dropped = draggedCarriedItem(player)
+        return { dropped and dropped:getDisplayName() or Mod.txt("NotOnYou") }
+    end
+    if not item or not player then
+        table.insert(lines, Mod.txt("TipNotCarried", Mod.SlotName(button.slot)))
+    else
+        local where
+        if player:isHandItem(item) then
+            where = Mod.txt("TipHands")
+        elseif player:isEquippedClothing(item) then
+            where = Mod.txt("TipWorn")
+        else
+            local bag = Mod.BagOf(player, item)
+            where = bag and Mod.txt("TipIn", Mod.BagName(bag)) or Mod.txt("TipInventory")
         end
+        if not entry.exact then
+            where = where .. " " .. Mod.txt("TipOther")
+        end
+        table.insert(lines, where)
+        local home = Mod.HomeOf(player, item)
+        if home and Mod.BagOf(player, item) ~= home then
+            table.insert(lines, Mod.txt("TipHome", Mod.BagName(home)))
+        end
+    end
+    if button.slot.action then
+        table.insert(lines, Mod.txt("TipAction", Mod.Label(button.slot.action)))
+    end
+    return lines
+end
+
+function Bar:hoveredButton()
+    if self.dragging then
+        return nil
+    end
+    for _, button in ipairs(self.buttons) do
+        if button:isMouseOver() then
+            return button
+        end
+    end
+    return nil
+end
+
+function Bar:render()
+    local button = self:hoveredButton()
+    if not button then
+        return
+    end
+    local context = getPlayerContextMenu(0)
+    if context and context:isAnyVisible() then
+        return
+    end
+    local lines = self:hoverLines(button)
+    local tm = getTextManager()
+    local width = 0
+    for _, line in ipairs(lines) do
+        width = math.max(width, tm:MeasureStringX(UIFont.Small, line))
+    end
+    local height = #lines * FONT_HGT_SMALL
+    local x, y
+    if Mod.settings.vertical then
+        x = -width - 6
+        y = button:getY() + (button:getHeight() - height) / 2
+        if self:getAbsoluteX() + x < 0 then
+            x = self.width + 2
+        end
+    else
+        x = button:getX() + (button:getWidth() - width) / 2
+        y = -height
+    end
+    self:drawRect(x - 2, y, width + 4, height, 0.6, 0, 0, 0)
+    for i, line in ipairs(lines) do
+        local lineWidth = tm:MeasureStringX(UIFont.Small, line)
+        self:drawText(line, x + (width - lineWidth) / 2, y + (i - 1) * FONT_HGT_SMALL, 1, 1, 1, 1, UIFont.Small)
+    end
+end
+
+function Bar:updateItemTooltip()
+    local button = self:hoveredButton()
+    local item = nil
+    if button and button.slot and not ISMouseDrag.dragging then
+        item = (self.cache[button.slot] or {}).item
+    end
+    local context = getPlayerContextMenu(0)
+    if item and not (context and context:isAnyVisible()) then
+        if self.toolRender then
+            self.toolRender:setItem(item)
+            self.toolRender:bringToTop()
+        else
+            self.toolRender = ISToolTipInv:new(item)
+            self.toolRender:initialise()
+            self.toolRender:addToUIManager()
+            self.toolRender:setOwner(self)
+            self.toolRender:setCharacter(getSpecificPlayer(0))
+        end
+        self.toolRender:setVisible(true)
+    elseif self.toolRender then
+        self.toolRender:setVisible(false)
     end
 end
 
@@ -565,11 +702,20 @@ function Bar:update()
     ISPanel.update(self)
     self:refreshCache(false)
     self:track()
+    self:updateItemTooltip()
     local now = getTimestampMs()
     if now - self.lastKeys >= 1000 then
         self.lastKeys = now
         self:updateKeyTexts()
     end
+end
+
+function Bar:close()
+    if self.toolRender then
+        self.toolRender:removeFromUIManager()
+        self.toolRender = nil
+    end
+    self:removeFromUIManager()
 end
 
 function Bar:onMouseUp(x, y)
@@ -593,17 +739,10 @@ end
 
 function Bar:dropItems(slot)
     local player = getSpecificPlayer(0)
-    local dragging = ISMouseDrag.dragging
-    if not player or type(dragging) ~= "table" then
+    if not player or type(ISMouseDrag.dragging) ~= "table" then
         return
     end
-    local chosen = nil
-    for _, item in ipairs(ISInventoryPane.getActualItems(dragging)) do
-        if Mod.IsOnPlayer(player, item) then
-            chosen = item
-            break
-        end
-    end
+    local chosen = draggedCarriedItem(player)
     endInventoryDrag()
     if not chosen then
         HaloTextHelper.addBadText(player, Mod.txt("NotOnYou"))
@@ -615,44 +754,6 @@ function Bar:dropItems(slot)
     else
         Mod.AddSlot(player, chosen)
     end
-end
-
-function Bar:tooltipFor(button)
-    local player = getSpecificPlayer(0)
-    local slot = button.slot
-    local entry = self.cache[slot] or {}
-    local item = entry.item
-    local lines = { item and item:getDisplayName() or Mod.SlotName(slot) }
-    if not item or not player then
-        table.insert(lines, Mod.txt("TipNotCarried"))
-    else
-        if player:isHandItem(item) then
-            table.insert(lines, Mod.txt("TipHands"))
-        elseif player:isEquippedClothing(item) then
-            table.insert(lines, Mod.txt("TipWorn"))
-        else
-            local bag = Mod.BagOf(player, item)
-            if bag then
-                table.insert(lines, Mod.txt("TipIn", Mod.BagName(bag)))
-            else
-                table.insert(lines, Mod.txt("TipInventory"))
-            end
-        end
-        local home = Mod.HomeOf(player, item)
-        if home and Mod.BagOf(player, item) ~= home then
-            table.insert(lines, Mod.txt("TipHome", Mod.BagName(home)))
-        end
-        if not entry.exact then
-            table.insert(lines, Mod.txt("TipOther"))
-        end
-    end
-    if slot.action then
-        table.insert(lines, Mod.txt("TipAction", Mod.Label(slot.action)))
-    else
-        table.insert(lines, Mod.txt("TipAction", Mod.DefaultActionText(slot, item)))
-    end
-    table.insert(lines, Mod.txt("TipRightClick"))
-    return table.concat(lines, "\n")
 end
 
 function Mod.DefaultActionText(slot, item)
@@ -887,6 +988,9 @@ function Bar:addSettings(context)
         sub:setOptionChecked(locked, true)
     end
     sub:addOption(Mod.txt("ResetPosition"), self, Bar.resetPosition)
+    if Mod.GameHotbar then
+        Mod.GameHotbar.AddOptions(sub)
+    end
 end
 
 local function addKeyBindings()
@@ -977,6 +1081,9 @@ local function onTick()
     local show = player ~= nil and not player:isDead()
     if bar:getIsVisible() ~= show then
         bar:setVisible(show)
+        if not show and bar.toolRender then
+            bar.toolRender:setVisible(false)
+        end
     end
     if show and bar:isStale(player) then
         bar:rebuild()
@@ -989,7 +1096,7 @@ local function onGameStart()
     end
     Mod.LoadSettings()
     if Mod.bar then
-        Mod.bar:removeFromUIManager()
+        Mod.bar:close()
     end
     local bar = Bar:new()
     bar:initialise()
