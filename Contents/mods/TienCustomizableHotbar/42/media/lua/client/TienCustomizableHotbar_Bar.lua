@@ -2,6 +2,7 @@ require "ISUI/ISPanel"
 require "ISUI/ISButton"
 require "TienCustomizableHotbar_Use"
 require "TienCustomizableHotbar_Dock"
+require "TienCustomizableHotbar_Tools"
 
 local Mod = TienCustomizableHotbar
 
@@ -24,9 +25,12 @@ local BLUE = { r = 0.45, g = 0.7, b = 1 }
 local MARKER = { r = 0.35, g = 0.75, b = 0.35 }
 
 local KEY_SECTION = "[Customizable Hotbar]"
+local BOOLEANS = { labels = true, vertical = true, locked = true, gameLocked = true, hidden = true, swap = true,
+    gameSwap = true }
 
 local function defaultSettings()
-    return { size = 2, labels = false, vertical = false, locked = false, gameLocked = false }
+    return { size = 2, labels = false, vertical = false, locked = false, gameLocked = false, hidden = false,
+        swap = false, gameSwap = false }
 end
 
 Mod.settings = Mod.settings or defaultSettings()
@@ -45,7 +49,7 @@ function Mod.LoadSettings()
                 if n and SCALES[n] then
                     s.size = n
                 end
-            elseif key == "labels" or key == "vertical" or key == "locked" or key == "gameLocked" then
+            elseif BOOLEANS[key] then
                 s[key] = value == "true"
             elseif key == "customDock" or key == "customAlign" or key == "gameDock" or key == "gameAlign" then
                 s[key] = value
@@ -78,9 +82,12 @@ function Mod.SaveSettings()
     writer:write("labels=" .. tostring(s.labels == true) .. "\n")
     writer:write("vertical=" .. tostring(s.vertical == true) .. "\n")
     writer:write("locked=" .. tostring(s.locked == true) .. "\n")
+    writer:write("hidden=" .. tostring(s.hidden == true) .. "\n")
+    writer:write("swap=" .. tostring(s.swap == true) .. "\n")
     writeNumber(writer, "gameX", s.gameX)
     writeNumber(writer, "gameY", s.gameY)
     writer:write("gameLocked=" .. tostring(s.gameLocked == true) .. "\n")
+    writer:write("gameSwap=" .. tostring(s.gameSwap == true) .. "\n")
     for _, prefix in ipairs({ "custom", "game" }) do
         local dock = Mod.Dock.Get(s, prefix)
         if dock then
@@ -318,11 +325,19 @@ function SlotButton:endDrag()
     end
     local bar = self.bar
     bar.dragging = nil
-    local target = bar:dropIndex()
     local player = getSpecificPlayer(0)
-    if target and player then
-        local from = indexOf(player, self.slot)
-        if from then
+    local from = player and indexOf(player, self.slot)
+    if not from then
+        return
+    end
+    if Mod.settings.swap then
+        local target = bar:swapIndex()
+        if target then
+            Mod.SwapSlots(player, from, target)
+        end
+    else
+        local target = bar:dropIndex()
+        if target then
             Mod.MoveSlot(player, from, target)
         end
     end
@@ -372,6 +387,29 @@ function Bar:new()
     o.lastTrack = 0
     o.lastPrune = 0
     o.lastKeys = 0
+    o.lead = SPACING + 1
+    o.icons = {
+        {
+            texture = function() return Mod.settings.locked and "lock" or "unlock" end,
+            tip = function() return Mod.txt(Mod.settings.locked and "TipLocked" or "TipUnlocked") end,
+            click = function() o:setSetting("locked", not Mod.settings.locked) end,
+        },
+        {
+            texture = function() return Mod.settings.swap and "swap" or "insert" end,
+            tip = function() return Mod.txt(Mod.settings.swap and "TipSwap" or "TipInsert") end,
+            click = function() o:setSetting("swap", not Mod.settings.swap) end,
+        },
+        {
+            texture = function() return "eye" end,
+            tip = function() return Mod.txt("TipHide") end,
+            click = function() Mod.SetHidden(true) end,
+        },
+        {
+            texture = function() return "gear" end,
+            tip = function() return Mod.txt("Settings") end,
+            click = function() o:showSettingsMenu() end,
+        },
+    }
     return o
 end
 
@@ -390,8 +428,10 @@ function Bar:rebuild()
     local slotWidth = self.cell
     local slotHeight = self.cell + (s.labels and (FONT_HGT_SMALL + 2) or 0)
     local edge = self.spacing + 1
+    local m = Mod.Tools.Metrics(self.scale)
+    self.lead = edge + m.grip
 
-    local pos = edge
+    local pos = self.lead
     for i = 1, #slots + 1 do
         local slot = slots[i]
         local x, y = pos, edge
@@ -405,13 +445,16 @@ function Bar:rebuild()
         table.insert(self.buttons, button)
         pos = pos + (s.vertical and slotHeight or slotWidth) + self.spacing
     end
-    local length = pos - self.spacing + edge
+    local cross = (s.vertical and slotWidth or slotHeight) + edge * 2
+    local per, block = Mod.Tools.Block(m, #self.icons, cross)
+    Mod.Tools.Layout(self.icons, m, s.vertical, pos, cross, per)
+    local length = pos + block + m.margin + 1
     if s.vertical then
-        self:setWidth(slotWidth + edge * 2)
+        self:setWidth(cross)
         self:setHeight(length)
     else
         self:setWidth(length)
-        self:setHeight(slotHeight + edge * 2)
+        self:setHeight(cross)
     end
     self.moveWithMouse = false
     self.builtVersion = Mod.version
@@ -549,7 +592,43 @@ function Bar:dropIndex()
     return count + 1
 end
 
+function Bar:swapIndex()
+    local mx, my = getMouseX() - self:getAbsoluteX(), getMouseY() - self:getAbsoluteY()
+    local margin = self.cell
+    if mx < -margin or my < -margin or mx > self.width + margin or my > self.height + margin then
+        return nil
+    end
+    local vertical = Mod.settings.vertical
+    local along = vertical and my or mx
+    local last = nil
+    for _, button in ipairs(self.buttons) do
+        if button.index then
+            local finish = vertical and button:getBottom() or button:getRight()
+            if along < finish + self.spacing / 2 then
+                return button.index
+            end
+            last = button.index
+        end
+    end
+    return last
+end
+
+function Bar:drawSwapMarker()
+    local target = self:swapIndex()
+    for _, button in ipairs(self.buttons) do
+        if target and button.index == target then
+            local x, y, w, h = button:getX(), button:getY(), button:getWidth(), button:getHeight()
+            self:drawRect(x, y, w, h, 0.25, MARKER.r, MARKER.g, MARKER.b)
+            self:drawRectBorder(x - 2, y - 2, w + 4, h + 4, 1, MARKER.r, MARKER.g, MARKER.b)
+            self:drawRectBorder(x - 1, y - 1, w + 2, h + 2, 1, MARKER.r, MARKER.g, MARKER.b)
+        end
+    end
+end
+
 function Bar:drawDropMarker()
+    if Mod.settings.swap then
+        return self:drawSwapMarker()
+    end
     local target = self:dropIndex()
     if not target then
         return
@@ -576,21 +655,6 @@ function Bar:drawDropMarker()
     end
 end
 
-function Mod.DrawGrip(element, edge, vertical)
-    local tex = circle()
-    if not tex then
-        return
-    end
-    local across = math.floor((edge - 3) / 2)
-    for i = 0, 2 do
-        if vertical then
-            element:drawTextureScaled(tex, element.width / 2 - 7 + i * 5, across, 3, 3, 0.8, 0.7, 0.7, 0.7)
-        else
-            element:drawTextureScaled(tex, across, element.height / 2 - 7 + i * 5, 3, 3, 0.8, 0.7, 0.7, 0.7)
-        end
-    end
-end
-
 function Bar:prerender()
     if self.moving then
         self:dragUpdate()
@@ -600,8 +664,9 @@ function Bar:prerender()
     self:drawRectStatic(0, 0, self.width, self.height, 0.5, 0, 0, 0)
     self:drawRectBorderStatic(0, 0, self.width, self.height, BORDER.a, BORDER.r, BORDER.g, BORDER.b)
     if not Mod.settings.locked then
-        Mod.DrawGrip(self, (self.spacing or SPACING) + 1, Mod.settings.vertical)
+        Mod.Tools.DrawGrip(self, self.lead, Mod.settings.vertical)
     end
+    Mod.Tools.Draw(self, self.icons)
     if self.dragging then
         self:drawDropMarker()
     end
@@ -659,6 +724,13 @@ function Bar:hoveredButton()
 end
 
 function Bar:render()
+    if not self.dragging and not self.moving then
+        local icon = Mod.Tools.At(self.icons, self:getMouseX(), self:getMouseY())
+        if icon then
+            Mod.Tools.DrawTip(self, icon, Mod.settings.vertical)
+            return
+        end
+    end
     local button = self:hoveredButton()
     if not button then
         return
@@ -738,11 +810,11 @@ function Bar:close()
 end
 
 function Bar:isOnHandle(x, y)
-    local edge = (self.spacing or SPACING) + 1
+    local lead = self.lead
     if Mod.settings.vertical then
-        return y >= 0 and y < edge and x >= 0 and x < self.width
+        return y >= 0 and y < lead and x >= 0 and x < self.width
     end
-    return x >= 0 and x < edge and y >= 0 and y < self.height
+    return x >= 0 and x < lead and y >= 0 and y < self.height
 end
 
 function Bar:followDock()
@@ -769,7 +841,8 @@ end
 
 function Bar:onMouseDown(x, y)
     self.moving = false
-    if Mod.settings.locked or not self:isOnHandle(x, y) then
+    self.pressedIcon = Mod.Tools.At(self.icons, x, y)
+    if self.pressedIcon or Mod.settings.locked or not self:isOnHandle(x, y) then
         return true
     end
     self.moving = true
@@ -837,8 +910,16 @@ function Bar:onMouseMoveOutside(dx, dy)
 end
 
 function Bar:onMouseUp(x, y)
+    local icon = self.pressedIcon
+    self.pressedIcon = nil
     if ISMouseDrag.dragging and not self.moving then
         self:dropItems(nil)
+        return true
+    end
+    if icon then
+        if Mod.Tools.At(self.icons, x, y) == icon then
+            Mod.Tools.Click(icon)
+        end
         return true
     end
     self:endBarDrag()
@@ -846,6 +927,7 @@ function Bar:onMouseUp(x, y)
 end
 
 function Bar:onMouseUpOutside(x, y)
+    self.pressedIcon = nil
     self:endBarDrag()
 end
 
@@ -1079,11 +1161,24 @@ function Bar:resetPosition()
 end
 
 function Bar:addSettings(context)
-    local s = Mod.settings
     local option = context:addOption(Mod.txt("Settings"), nil, nil)
     local sub = context:getNew(context)
     context:addSubMenu(option, sub)
+    self:fillSettings(sub)
+end
 
+function Bar:showSettingsMenu()
+    local context = ISContextMenu.get(0, getMouseX(), getMouseY())
+    self:fillSettings(context)
+end
+
+function Mod.SetHidden(hidden)
+    Mod.settings.hidden = hidden == true
+    Mod.SaveSettings()
+end
+
+function Bar:fillSettings(sub)
+    local s = Mod.settings
     local sizeOption = sub:addOption(Mod.txt("Size"), nil, nil)
     local sizes = sub:getNew(sub)
     sub:addSubMenu(sizeOption, sizes)
@@ -1101,10 +1196,6 @@ function Bar:addSettings(context)
     local vertical = sub:addOption(Mod.txt("Vertical"), self, Bar.setSetting, "vertical", not s.vertical)
     if s.vertical then
         sub:setOptionChecked(vertical, true)
-    end
-    local locked = sub:addOption(Mod.txt("Lock"), self, Bar.setSetting, "locked", not s.locked)
-    if s.locked then
-        sub:setOptionChecked(locked, true)
     end
     sub:addOption(Mod.txt("ResetPosition"), self, Bar.resetPosition)
 end
@@ -1194,8 +1285,12 @@ local function onTick()
         return
     end
     local player = getSpecificPlayer(0)
-    local show = player ~= nil and not player:isDead()
+    local show = player ~= nil and not player:isDead() and not Mod.settings.hidden
     if bar:getIsVisible() ~= show then
+        if not show then
+            bar.pressedIcon = nil
+            bar:endBarDrag()
+        end
         bar:setVisible(show)
         if not show and bar.toolRender then
             bar.toolRender:setVisible(false)

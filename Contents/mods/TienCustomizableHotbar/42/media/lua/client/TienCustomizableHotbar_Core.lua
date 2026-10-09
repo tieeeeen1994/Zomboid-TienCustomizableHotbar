@@ -168,6 +168,15 @@ function Mod.MoveSlot(player, from, insertBefore)
     Mod.Changed(player)
 end
 
+function Mod.SwapSlots(player, a, b)
+    local slots = Mod.Slots(player)
+    if a == b or not slots[a] or not slots[b] then
+        return
+    end
+    slots[a], slots[b] = slots[b], slots[a]
+    Mod.Changed(player)
+end
+
 function Mod.SetSlotAction(player, index, rec)
     local slot = Mod.Slots(player)[index]
     if not slot then

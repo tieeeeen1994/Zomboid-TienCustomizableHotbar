@@ -24,7 +24,6 @@
     "IGUI_TienCustomizableHotbar_SizeLarge": "Large",
     "IGUI_TienCustomizableHotbar_ShowNames": "Show item names",
     "IGUI_TienCustomizableHotbar_Vertical": "Vertical",
-    "IGUI_TienCustomizableHotbar_Lock": "Lock position and order",
     "IGUI_TienCustomizableHotbar_ResetPosition": "Reset position",
     "IGUI_TienCustomizableHotbar_Set": "Slot %1: %2",
     "IGUI_TienCustomizableHotbar_TipNotCarried": "No %1 on you",
@@ -37,6 +36,15 @@
     "IGUI_TienCustomizableHotbar_TipAction": "Action: %1",
     "IGUI_TienCustomizableHotbar_SizeNormal": "Normal (like the game's hotbar)",
     "IGUI_TienCustomizableHotbar_AddLabel": "Add an item: click, or drag one here",
-    "IGUI_TienCustomizableHotbar_GameLock": "Lock the game's hotbar in place",
-    "IGUI_TienCustomizableHotbar_GameReset": "Put the game's hotbar back at the bottom"
+    "IGUI_TienCustomizableHotbar_GameReset": "Put the game's hotbar back at the bottom",
+    "IGUI_TienCustomizableHotbar_GameSettings": "Game's hotbar settings",
+    "IGUI_TienCustomizableHotbar_TipLocked": "Locked: click to allow moving the bar and its slots",
+    "IGUI_TienCustomizableHotbar_TipUnlocked": "Click to lock the bar and its slots in place",
+    "IGUI_TienCustomizableHotbar_TipGameLocked": "Locked: click to allow moving the game's hotbar and its slots",
+    "IGUI_TienCustomizableHotbar_TipGameUnlocked": "Click to lock the game's hotbar and its slots in place",
+    "IGUI_TienCustomizableHotbar_TipSwap": "Dropping a slot swaps it with the slot under it (click: insert instead)",
+    "IGUI_TienCustomizableHotbar_TipInsert": "Dropping a slot moves it there and shifts the others (click: swap instead)",
+    "IGUI_TienCustomizableHotbar_TipHide": "Hide this hotbar (the eye on the game's hotbar shows it again)",
+    "IGUI_TienCustomizableHotbar_TipHideBar": "Hide the Customizable Hotbar",
+    "IGUI_TienCustomizableHotbar_TipShowBar": "Show the Customizable Hotbar"
 }

@@ -77,11 +77,14 @@ from the item's menu like TienActionableHotbar.
     item is (bag / hands / worn / not on you, "(not the one you assigned)"), where it goes back to, and a custom action.
     Kept from before because vanilla has no equivalent: the "+" slot, the amber (stand-in item) and blue (custom
     action) dots, item names under the slots, vertical. Only the handle drags (user's choice, 2026-10-09): the admin
-    hotbar's grip (three 3 px dots, `Mod.DrawGrip`) in the left margin (top margin when vertical), shown while unlocked; `Bar:onMouseDown` lets
-    `ISPanel.onMouseDown` start a move only inside that margin (`isOnHandle`), and swallows presses elsewhere on the
-    frame. The game's hotbar gets the same grip and handle in its left margin while unlocked
-    (`ISHotbar:render` wrapped, after vanilla's drawing).
-  - Reordering by drag (admin hotbar's code: threshold, capture, ghost, drop marker); off while locked.
+    hotbar's grip (three 3 px dots, `Tools.DrawGrip`) in its own column at the left end (top when vertical), shown
+    while unlocked; `Bar:onMouseDown` starts a move only inside it (`isOnHandle`, `self.lead` = border + spacing + grip
+    column), and swallows presses elsewhere on the frame. The game's hotbar gets the same column (see below).
+  - Reordering by drag (admin hotbar's code: threshold, capture, ghost, drop marker); off while locked. Insert
+    (`Mod.MoveSlot`, green line) or swap (`Mod.SwapSlots`, green frame on the target, `Bar:swapIndex`) by setting `swap`.
+  - Tool column at the right end (bottom when vertical), user's design (2026-10-09, after Reorder The Hotbar's lock /
+    swap squares): Lock, Swap / Insert, Hide, Settings (gear: the settings that were the right-click submenu; Lock left
+    the menus for the icon). Hide sets `hidden` in the ini; `onTick` keeps the bar invisible, slot keys still work.
   - Inventory drops: a slot's / the bar's `onMouseUp` with `ISMouseDrag.dragging` set and no press of its own takes the
     first dragged item carried by the player (onto a slot = replace its item, elsewhere = new slot), then ends the drag
     the way `ISInventoryPage`'s container buttons do (`draggingFocus:onMouseUp(0, 0)`, both fields nil).
@@ -93,7 +96,18 @@ from the item's menu like TienActionableHotbar.
     pattern (see ZomboidFixesB42 CLAUDE.md: mod options would drop Shift/Ctrl/Alt). `OnKeyPressed` (on release, like
     vanilla's hotbar).
   - Settings file `Zomboid/Lua/TienCustomizableHotbar.ini`: `version`, `x`, `y`, `size` (1-3: scale 0.75 / 1 / 1.25),
-    `labels`, `vertical`, `locked`, and for the game's hotbar `gameX` (its centre), `gameY` (its top), `gameLocked`.
+    `labels`, `vertical`, `locked`, `hidden`, `swap`, and for the game's hotbar `gameX` (its centre), `gameY` (its
+    top), `gameLocked`, `gameSwap`.
+- `client/TienCustomizableHotbar_Tools.lua`: what both bars share: `Metrics(scale)` (grip column 12, icons 16, gap 2,
+  margin 4, scaled), `Block` (how many icons fit across the bar, and the block's length along it), `Layout`, `At`,
+  `Draw`, `DrawTip` (label box above the icon, or beside a vertical bar), `Click` (UIActivateButton sound),
+  `DrawGrip`. Icons are `{ texture(), tip(), click(), alpha()? }` with fields `x, y, size` set by `Layout`. The same
+  metrics at Normal size make both bars identical: border 1 + spacing 10 + grip 12 before slot 1, spacing 10 + icon 16 +
+  margin 4 + border 1 after the last.
+- `media/ui/TienCustomizableHotbar/*.png` (lock, unlock, swap, insert, eye, eyeoff, gear): 16x16 white pixel glyphs
+  with a soft dark outline, drawn by `scripts/make_icons.py` (hand-made pixel maps; a procedural gear looked like a
+  cross at 16 px). Vanilla has a lock and gear (`inventoryPanes/Button_Lock` 39 px, `Button_Settings`) and an eye
+  (`foraging/eyeconOn` 70x39) but no insert icon, and they blur at 16 px.
 - `client/TienCustomizableHotbar_GameHotbar.lua`: the vanilla hotbar made draggable (user's request, 2026-10-09).
   - Vanilla's `ISHotbar:update` calls `setSizeAndPosition()` every update, which centres it at the bottom of the
     player's screen. Wrapped (at `OnGameStart`, outermost) to move it afterwards: while dragging to the drag position,
@@ -108,9 +122,35 @@ from the item's menu like TienActionableHotbar.
     back, 2026-10-09). Player 0 only (vanilla hides the other players' hotbars).
   - Vanilla's `getSlotIndexAt` maps every point inside the bar, margins included, to the nearest slot, so a right-click
     on the frame is told apart with `isOnSlot` (slot rects from `margins`, `slotWidth`, `slotPad`, `slotHeight`); there
-    it opens Lock / Put back at the bottom. They used to be listed in this bar's Hotbar settings too, under its own
-    Lock / Reset: the user took them for this bar's and found the game's hotbar changing (2026-10-09), so each bar's
-    menu now only holds its own options.
+    it opens Put back at the bottom (the gear opens the same menu). These used to be listed in this bar's Hotbar
+    settings too: the user took them for this bar's and found the game's hotbar changing (2026-10-09), so each bar's
+    menu only holds its own options.
+  - Grip and tool columns without touching vanilla's layout code (2026-10-09): `Game.Layout` runs after vanilla's
+    `setSizeAndPosition` (every update), keeps vanilla's width as `tchInner`, widens the bar by the grip column
+    (`tchShift`) and the tool column (`tchTools` = where the icons start) and re-centres it. The wrapped `render` draws
+    the full border, then runs vanilla's `render` (and any other mod's render inside it) with the draw methods
+    shifted right by `tchShift` (instance fields over the class methods for that one call: `drawRect*` move their
+    first argument, `drawText*` / `drawTexture*` / `drawItemIcon` their second) and `self.width` set to `tchInner`
+    (Lua field only; Java's width is untouched), then removes them. Vanilla's own outer border call
+    (`drawRectBorderStatic(0, 0, width, height)`) is skipped. `getSlotIndexAt` returns -1 on the grip and tool columns
+    and otherwise runs vanilla's on the shifted x with `tchInner`, so vanilla's hover, tooltip, click, attach drop and
+    right-click menu all line up. A drop of an inventory item on either column is swallowed (vanilla's `onMouseUp`
+    would call `canBeAttached(nil, item)`).
+  - Slot reordering (user's request, replacing Reorder The Hotbar 2026-10-09): press on a slot, move 6 px → capture, a
+    ghost (slot frame, item, slot name), the source slot dimmed, a green line (insert) or frame (swap); release →
+    `Game.Drop`. A press that does not move falls through to vanilla's `onMouseUp` (the slot is used as usual); a moved
+    one never reaches it. Off while locked and while an attach / detach hotbar action is queued (their `perform` uses
+    the slot index taken when queued). `Game.ApplyOrder` permutes `availableSlot` and `attachedItems`, gives each moved
+    item `setAttachedSlot(new index)` + `syncItemFields` (SyncItemFieldsPacket carries `attachedSlot`,
+    `attachedSlotType`, `attachedToModel` both ways, 42.21), and calls vanilla's `savePosition` (modData `hotbar` =
+    slot types in order, `transmitModData`), which `loadPosition` reads back. The model location
+    (`attachedToModel`) does not depend on the index, so nothing moves on the character. Number keys follow positions.
+  - Safety net (`Game.Heal`, after every vanilla `reloadIcons`, player 0): an item whose saved index does not hold its
+    `attachedSlotType` is renumbered to the slot of that type (and synced). Reorder The Hotbar's history (v3-v7) was
+    items falling off after a reconnect when the server's indexes and the saved order disagreed: vanilla's `refresh`
+    pairs `attachedItems[i]` with `availableSlot[i]` and re-attaches with that slot's definition. `reloadIcons` runs
+    at the end of every `refresh` and inside it (`removeItem` / `attachItem`), so the pairing is right before vanilla
+    uses it. Two items claiming one slot type (corrupt data) are left as vanilla would.
 - `client/TienCustomizableHotbar_Dock.lua`: snapping and docking the two bars together (user's choice of "snap and
   dock", flush, 2026-10-09).
   - A dock = `{ side, align, offset }`: the docked bar sits `above` / `below` / `left` / `right` of the other, lined
@@ -167,4 +207,13 @@ from the item's menu like TienActionableHotbar.
 - Key binds with and without Shift; a bind on 1 also fires the vanilla hotbar (documented).
 - MP: slots and homes survive a reconnect (transmitModData); draws work on a server; the `Then` action never reaches the
   server. With ZomboidFixesB42's fast forward and TransferResync on.
+- Tool columns: both bars line up at Normal size (same left and right ends); Small / Large / vertical / names on; icon
+  tooltips; lock hides the grip; hide + the game hotbar's eye; the gear menus.
+- Game hotbar reordering: insert and swap, marker and ghost; a click still uses the slot; a drop on the grip or tools
+  column does nothing; number keys follow; log out and back in (SP and on a server) and the order and items stay; put
+  on / take off a belt or bag after reordering (vanilla `refresh` adds and removes slots); attach an item by drag and by
+  the slot menu after reordering; with TienActionableHotbar and Plysken Attachments Reborn (does PAR draw in
+  `ISHotbar:render`? its drawing is shifted with vanilla's). Covered so far only by a Lua harness against vanilla's
+  real `ISHotbar.lua` (scratchpad, 2026-10-09): layout numbers, hit tests, shifted draws restored, click / insert /
+  swap / heal / icons / lock / handle.
 - With TienActionableHotbar and Plysken Attachments Reborn loaded.
