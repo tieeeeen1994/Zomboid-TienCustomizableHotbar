@@ -1,4 +1,5 @@
 version=1
+id=3816246254
 title=Tien's Customizable Hotbar
 description=A second hotbar where any item you carry can go, even one deep in a bag. Press its slot and the item comes out of the bag into your hands; press again and it goes back where it came from.
 description=
