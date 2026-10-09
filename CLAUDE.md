@@ -62,21 +62,41 @@ from the item's menu like TienActionableHotbar.
     vanilla's put-backs), refused with a halo text when the bag is gone, does not allow the item or has no room.
   - Custom action: match the record in a freshly built menu, run its `onSelect` like `ISContextMenu:onMouseUp`. Not
     found / greyed out: put away if held or worn (so "Equip Primary" toggles), else a bad halo text.
+  - Steps (user's request 2026-10-10, after the admin hotbar's `slot.steps` in ZomboidFixesB42): `slot.steps = { { id,
+    type, action, alone } ... }`, each shaped like a slot (exact item, full type, optional menu action), at most
+    `MAX_STEPS` 8, cleaned with the slots. Not counted by `FindSlotWithItem` (an item can be a step of several slots).
+    `Mod.RunEntry(player, entry, follow)` does what a slot does for one entry and returns the direction it took (true
+    = taken out, false = put back, nil = a menu action / not carried). `Mod.Use` runs the slot's own entry, then queues
+    a `Then` per step, each queued from the previous one's `perform`, so every step decides on the hands and bags of
+    that moment (decisions made at the press would be wrong after the first equip). A usual-action step follows the
+    slot's direction (skips an item already in that state) unless `alone`; a menu-action step always runs. The
+    admin hotbar's default is the same (`follow = same`); "opposite" was left out. A step whose item is missing gets
+    the same bad text as a slot and the chain goes on; a failed action resets vanilla's queue, which drops the rest.
+  - `Then:perform` wraps its function in vanilla's `beginAddingActions` / `endAddingActions`
+    (`ISTimedActionQueue.add` then inserts after the running action, in order, and `ISTimedActionQueue.clear` from a
+    menu handler only drops the actions added so far and skips `StopAllActionQueue`). Without it a step's actions
+    went to the end of the queue, after the next step's `Then`, and a vanilla handler's clear wiped the chain. The
+    draw's "send back what the equip pushed out" now also runs before the next step. Checked with a Lua harness
+    against vanilla's real `ISTimedActionQueue` / `ISBaseTimedAction` (scratchpad, 2026-10-10).
 - `client/TienCustomizableHotbar_Bar.lua`: the bar, menus, keys.
   - Created at `OnGameStart` for player 0 only (split screen players have their own vanilla hotbars; keys are player 0
-    only like vanilla's). `OnTick` shows it while player 0 is alive and rebuilds when the slots change (version, player,
-    slots table or count).
+    only like vanilla's). `OnTick` shows it while player 0 is alive, the bar is not hidden by its eye and the game's
+    hotbar `isVisible()` (`Mod.GameHotbarShown`, also checked in `Bar:prerender` so it goes in the same frame), and
+    rebuilds when the slots change (version, player, slots table or count). Following the game's hotbar covers every
+    way it disappears: the pause menu and the hide-UI key (`ISUIHandler.setVisibleAllUI(false)` hides every visible
+    top-level element and re-shows the same ones later; `OnTick` used to turn this bar back on at once, user report
+    2026-10-10), driving (vanilla `ISHotbar:update` hides it every update while the player is the driver), a joypad.
   - Per frame it draws from a cache (`Resolve` every 250 ms), never walking the inventory in render.
   - Looks like vanilla's `ISHotbar:render` (the user asked, 2026-10-09): panel 0.5 black + 0.8 grey borders
     (`drawRectStatic` / `drawRectBorderStatic`), 60 px slots with 10 px margins and gaps at Normal size (Small 0.75,
-    Large 1.25 scale everything), slot number top left (the bound key instead when there is one), hover = white 0.2
+    Large 1.25 scale everything), the bound key top left (nothing without one: the user asked, 2026-10-10), hover = white 0.2
     tint (red while dragging an item that is not carried), item icon from `item:getTexture()` at its own size, the
     equipped marker `media/ui/icon.png` bottom right for held / worn items, faded (0.25) script icon when not carried,
     a dark label box above the hovered slot (drawn by the bar's `render`, outside its bounds, like vanilla) and the
     item's `ISToolTipInv` like vanilla's `update`. Vanilla's label names the attachment point; ours says where the
     item is (bag / hands / worn / not on you, "(not the one you assigned)"), where it goes back to, and a custom action.
     Kept from before because vanilla has no equivalent: the "+" slot, the amber (stand-in item) and blue (custom
-    action) dots, item names under the slots, vertical. Only the handle drags (user's choice, 2026-10-09): the admin
+    action) dots, a "+n" step count bottom left (after the blue dot), item names under the slots, vertical. Only the handle drags (user's choice, 2026-10-09): the admin
     hotbar's grip (three 3 px dots, `Tools.DrawGrip`) in its own column at the left end (top when vertical), shown
     while unlocked; `Bar:onMouseDown` starts a move only inside it (`isOnHandle`, `self.lead` = border + spacing + grip
     column), and swallows presses elsewhere on the frame. The game's hotbar gets the same column (see below).
@@ -132,7 +152,10 @@ from the item's menu like TienActionableHotbar.
     shifted right by `tchShift` (instance fields over the class methods for that one call: `drawRect*` move their
     first argument, `drawText*` / `drawTexture*` / `drawItemIcon` their second) and `self.width` set to `tchInner`
     (Lua field only; Java's width is untouched), then removes them. Vanilla's own outer border call
-    (`drawRectBorderStatic(0, 0, width, height)`) is skipped. `getSlotIndexAt` returns -1 on the grip and tool columns
+    (`drawRectBorderStatic(0, 0, width, height)`) is skipped. Vanilla's slot number (`drawText(tostring(i), slotX + 3,
+    margins + 2)`, recognised by text and position before the shift) is skipped when `Game.SlotKey(i)` finds no key:
+    only `KeybindId.HOTBAR_1..8` exist (default keys 1-8, `getSlotForKey`), so slots past 8 never show one (user's
+    request 2026-10-10). If the layout is not applied (render failed), vanilla's numbers show as before. `getSlotIndexAt` returns -1 on the grip and tool columns
     and otherwise runs vanilla's on the shifted x with `tchInner`, so vanilla's hover, tooltip, click, attach drop and
     right-click menu all line up. A drop of an inventory item on either column is swallowed (vanilla's `onMouseUp`
     would call `canBeAttached(nil, item)`).
@@ -192,6 +215,11 @@ from the item's menu like TienActionableHotbar.
 - Gun out, press the knife's slot: gun back into its bag, then knife out. Two-handed rifle → pistol and back.
 - Equip the gun by hand from the bag (vanilla menu), then press its slot: it goes back to the bag (home remembered).
 - Move the gun into the main inventory on purpose: after 15 s a press-press leaves it there.
+- Steps: pistol slot + flashlight step: press = pistol out, then flashlight to the off hand; press = both back into
+  their bags. Only the flashlight out: press = pistol out, flashlight left as it is. A step with Follow off toggles on
+  its own. Painkillers > Take Pills slot + water bottle > Drink step from a bag. Move / change / remove a step; 8 steps
+  greys out Add. Walk mid-chain (stops). Hover lists the steps; "+n" badge at every size. MP: the `Then`s stay client
+  side.
 - Two M16s: the assigned one is drawn; drop it: the other is used (amber dot); drop both: greyed, "You have no ...".
 - Bag full or dropped while the gun is out: halo text, gun stays in the inventory.
 - Clothing / backpack slot: wear, take off, back into the bag.

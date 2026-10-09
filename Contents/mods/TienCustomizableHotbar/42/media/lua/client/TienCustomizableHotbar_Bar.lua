@@ -254,7 +254,14 @@ function SlotButton:render()
     if dotTex and self.slot.action then
         self:drawTextureScaled(dotTex, 3, cell - dot - 3, dot, dot, 1, BLUE.r, BLUE.g, BLUE.b)
     end
-    self:drawText(self.keyText or string.format("%d", self.index), 3, 1, 1, 1, 1, 1, UIFont.Small)
+    local stepCount = #Mod.Steps(self.slot)
+    if stepCount > 0 then
+        local x = self.slot.action and (dot + 5) or 3
+        self:drawText("+" .. string.format("%d", stepCount), x, cell - FONT_HGT_SMALL - 1, 1, 1, 1, 0.9, UIFont.Small)
+    end
+    if self.keyText then
+        self:drawText(self.keyText, 3, 1, 1, 1, 1, 1, UIFont.Small)
+    end
     if Mod.settings.labels then
         local name = item and item:getDisplayName() or Mod.SlotName(self.slot)
         self:drawTextCentre(truncate(name, self.width - 4, UIFont.Small), self.width / 2, cell, 1, 1, 1, math.max(alpha, 0.5), UIFont.Small)
@@ -488,6 +495,10 @@ function Bar:refreshCache(force)
         if button.slot then
             local item, exact = Mod.Resolve(player, button.slot)
             self.cache[button.slot] = { item = item, exact = exact }
+            for _, step in ipairs(Mod.Steps(button.slot)) do
+                local stepItem, stepExact = Mod.Resolve(player, step)
+                self.cache[step] = { item = stepItem, exact = stepExact }
+            end
         end
     end
 end
@@ -656,6 +667,10 @@ function Bar:drawDropMarker()
 end
 
 function Bar:prerender()
+    if not Mod.GameHotbarShown() then
+        self:applyVisible(false)
+        return
+    end
     if self.moving then
         self:dragUpdate()
     else
@@ -707,6 +722,15 @@ function Bar:hoverLines(button)
     end
     if button.slot.action then
         table.insert(lines, Mod.txt("TipAction", Mod.Label(button.slot.action)))
+    end
+    for _, step in ipairs(Mod.Steps(button.slot)) do
+        local stepItem = (self.cache[step] or {}).item
+        local name = stepItem and stepItem:getDisplayName() or Mod.SlotName(step)
+        if step.action then
+            table.insert(lines, Mod.txt("TipStepAction", name, Mod.Label(step.action)))
+        else
+            table.insert(lines, Mod.txt("TipStep", name))
+        end
     end
     return lines
 end
@@ -1062,16 +1086,16 @@ function Bar:onPickAction(slot, leaf)
     HaloTextHelper.addText(player, Mod.txt("Set", string.format("%d", index), text))
 end
 
-function Bar:mirror(menu, nodes, slot, checked)
+function Bar:mirror(menu, nodes, pick, checked)
     for _, node in ipairs(nodes) do
         local option
         if node.children then
             option = menu:addOption(node.name, nil, nil)
             local sub = menu:getNew(menu)
             menu:addSubMenu(option, sub)
-            self:mirror(sub, node.children, slot, checked)
+            self:mirror(sub, node.children, pick, checked)
         else
-            option = menu:addOption(node.name, self, Bar.onPickAction, slot, node)
+            option = menu:addOption(node.name, self, pick, node)
         end
         if node == checked then
             menu:setOptionChecked(option, true)
@@ -1098,34 +1122,115 @@ function Bar:onRemoveSlot(slot)
     end
 end
 
+local function addTooltip(option, text)
+    local tip = ISInventoryPaneContextMenu.addToolTip()
+    tip.description = text
+    option.toolTip = tip
+end
+
+local function menuEntry(player, entry)
+    local item = Mod.Resolve(player, entry)
+    local leaves, nodes = {}, {}
+    if item then
+        leaves, nodes = Mod.BuildLeaves(0, item)
+    end
+    return { entry = entry, item = item, leaves = leaves, nodes = nodes }
+end
+
+function Bar:addActionMenu(context, info, pick)
+    local entry = info.entry
+    local actionOption = context:addOption(Mod.txt("Action"), nil, nil)
+    addTooltip(actionOption, Mod.txt("ActionTooltip"))
+    local actions = context:getNew(context)
+    context:addSubMenu(actionOption, actions)
+    local default = actions:addOption(Mod.DefaultActionText(entry, info.item), self, pick, nil)
+    if not entry.action then
+        actions:setOptionChecked(default, true)
+    end
+    if info.item then
+        self:mirror(actions, info.nodes, pick, Mod.Match(info.leaves, entry.action))
+    else
+        local missing = actions:addOption(Mod.txt("CarryToPick", Mod.SlotName(entry)), nil, nil)
+        missing.notAvailable = true
+    end
+end
+
+function Bar:addStepMenu(stepMenu, player, slot, info, index, count)
+    local step = info.entry
+    self:addActionMenu(stepMenu, info, function(_, node)
+        Mod.SetStepAction(player, slot, step, node and Mod.RecordFromLeaf(node) or nil)
+    end)
+    local changeOption = stepMenu:addOption(Mod.txt("ChangeItem"), nil, nil)
+    local change = stepMenu:getNew(stepMenu)
+    stepMenu:addSubMenu(changeOption, change)
+    self:fillItemPicker(change, function(_, picked)
+        Mod.SetStepItem(player, slot, step, picked)
+    end)
+    local follow = stepMenu:addOption(Mod.txt("StepFollow"), player, Mod.SetStepAlone, slot, step, not step.alone)
+    addTooltip(follow, Mod.txt("StepFollowTooltip"))
+    if not step.alone then
+        stepMenu:setOptionChecked(follow, true)
+    end
+    if step.action then
+        follow.notAvailable = true
+    end
+    if index > 1 then
+        stepMenu:addOption(Mod.txt("MoveEarlier"), player, Mod.MoveStep, slot, step, -1)
+    end
+    if index < count then
+        stepMenu:addOption(Mod.txt("MoveLater"), player, Mod.MoveStep, slot, step, 1)
+    end
+    stepMenu:addOption(Mod.txt("RemoveStep"), player, Mod.RemoveStep, slot, step)
+end
+
+function Bar:addStepsMenu(context, player, slot, stepInfos)
+    local stepsOption = context:addOption(Mod.txt("Steps"), nil, nil)
+    addTooltip(stepsOption, Mod.txt("StepsTooltip"))
+    local stepsMenu = context:getNew(context)
+    context:addSubMenu(stepsOption, stepsMenu)
+    local count = #stepInfos
+    for i, info in ipairs(stepInfos) do
+        local step = info.entry
+        local name = info.item and info.item:getDisplayName() or Mod.SlotName(step)
+        if step.action then
+            name = name .. ": " .. Mod.Label(step.action)
+        end
+        local stepOption = stepsMenu:addOption(string.format("%d. ", i) .. name, nil, nil)
+        if info.item then
+            stepOption.itemForTexture = info.item
+        end
+        local stepMenu = stepsMenu:getNew(stepsMenu)
+        stepsMenu:addSubMenu(stepOption, stepMenu)
+        self:addStepMenu(stepMenu, player, slot, info, i, count)
+    end
+    local addOption = stepsMenu:addOption(Mod.txt("AddStep"), nil, nil)
+    if count >= Mod.MAX_STEPS then
+        addOption.notAvailable = true
+        addTooltip(addOption, Mod.txt("StepsFull", string.format("%d", Mod.MAX_STEPS)))
+        return
+    end
+    local add = stepsMenu:getNew(stepsMenu)
+    stepsMenu:addSubMenu(addOption, add)
+    self:fillItemPicker(add, function(_, picked)
+        Mod.AddStep(player, slot, picked)
+    end)
+end
+
 function Bar:showSlotMenu(slot)
     local player = getSpecificPlayer(0)
     if not player then
         return
     end
-    local item = Mod.Resolve(player, slot)
-    local leaves, nodes = {}, {}
-    if item then
-        leaves, nodes = Mod.BuildLeaves(0, item)
+    local info = menuEntry(player, slot)
+    local stepInfos = {}
+    for i, step in ipairs(Mod.Steps(slot)) do
+        stepInfos[i] = menuEntry(player, step)
     end
     local context = ISContextMenu.get(0, getMouseX(), getMouseY())
 
-    local actionOption = context:addOption(Mod.txt("Action"), nil, nil)
-    local actionTip = ISInventoryPaneContextMenu.addToolTip()
-    actionTip.description = Mod.txt("ActionTooltip")
-    actionOption.toolTip = actionTip
-    local actions = context:getNew(context)
-    context:addSubMenu(actionOption, actions)
-    local default = actions:addOption(Mod.DefaultActionText(slot, item), self, Bar.onPickAction, slot, nil)
-    if not slot.action then
-        actions:setOptionChecked(default, true)
-    end
-    if item then
-        self:mirror(actions, nodes, slot, Mod.Match(leaves, slot.action))
-    else
-        local missing = actions:addOption(Mod.txt("CarryToPick", Mod.SlotName(slot)), nil, nil)
-        missing.notAvailable = true
-    end
+    self:addActionMenu(context, info, function(bar, node)
+        bar:onPickAction(slot, node)
+    end)
 
     local changeOption = context:addOption(Mod.txt("ChangeItem"), nil, nil)
     local change = context:getNew(context)
@@ -1133,6 +1238,8 @@ function Bar:showSlotMenu(slot)
     self:fillItemPicker(change, function(bar, picked)
         bar:onChangeItem(slot, picked)
     end)
+
+    self:addStepsMenu(context, player, slot, stepInfos)
 
     context:addOption(Mod.txt("Remove"), self, Bar.onRemoveSlot, slot)
     self:addSettings(context)
@@ -1279,23 +1386,33 @@ local function onFillInventoryMenu(playerNum, context, items)
     context:addOption(Mod.txt("AddToHotbar"), Mod.bar, Bar.onPickNew, item)
 end
 
+function Mod.GameHotbarShown()
+    local hotbar = getPlayerHotbar(0)
+    return hotbar ~= nil and hotbar:isVisible()
+end
+
+function Bar:applyVisible(show)
+    if self:getIsVisible() == show then
+        return
+    end
+    if not show then
+        self.pressedIcon = nil
+        self:endBarDrag()
+    end
+    self:setVisible(show)
+    if not show and self.toolRender then
+        self.toolRender:setVisible(false)
+    end
+end
+
 local function onTick()
     local bar = Mod.bar
     if not bar then
         return
     end
     local player = getSpecificPlayer(0)
-    local show = player ~= nil and not player:isDead() and not Mod.settings.hidden
-    if bar:getIsVisible() ~= show then
-        if not show then
-            bar.pressedIcon = nil
-            bar:endBarDrag()
-        end
-        bar:setVisible(show)
-        if not show and bar.toolRender then
-            bar.toolRender:setVisible(false)
-        end
-    end
+    local show = player ~= nil and not player:isDead() and not Mod.settings.hidden and Mod.GameHotbarShown()
+    bar:applyVisible(show)
     if show and bar:isStale(player) then
         bar:rebuild()
     end

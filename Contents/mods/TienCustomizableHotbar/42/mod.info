@@ -1,6 +1,6 @@
 name=Tien's Customizable Hotbar
 id=TienCustomizableHotbar
-description=A second hotbar where any item you carry can go, even one deep in a bag. Click + or drag an item onto the bar, then click the slot or press its key: the gun comes out of your backpack and into your hands, and the next press puts it back where it came from. Each slot can also do any action from the item's own menu (drink, take pills, wear). It looks like the game's hotbar, and the game's own hotbar can be dragged anywhere and its slots reordered too. Small buttons on each bar lock it, switch between swapping and inserting slots, hide it, and open its settings. Keys are yours to bind in the game's key bindings.
+description=A second hotbar where any item you carry can go, even one deep in a bag. Click + or drag an item onto the bar, then click the slot or press its key: the gun comes out of your backpack and into your hands, and the next press puts it back where it came from. Each slot can also do any action from the item's own menu (drink, take pills, wear), and run steps: more items used one after the other from the same press. It looks like the game's hotbar, and the game's own hotbar can be dragged anywhere and its slots reordered too. Small buttons on each bar lock it, switch between swapping and inserting slots, hide it, and open its settings. Keys are yours to bind in the game's key bindings.
 author=Tien
 poster=poster.png
 icon=icon.png

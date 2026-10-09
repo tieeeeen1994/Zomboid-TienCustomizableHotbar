@@ -46,5 +46,16 @@
     "IGUI_TienCustomizableHotbar_TipInsert": "Dropping a slot moves it there and shifts the others (click: swap instead)",
     "IGUI_TienCustomizableHotbar_TipHide": "Hide this hotbar (the eye on the game's hotbar shows it again)",
     "IGUI_TienCustomizableHotbar_TipHideBar": "Hide the Customizable Hotbar",
-    "IGUI_TienCustomizableHotbar_TipShowBar": "Show the Customizable Hotbar"
+    "IGUI_TienCustomizableHotbar_TipShowBar": "Show the Customizable Hotbar",
+    "IGUI_TienCustomizableHotbar_Steps": "Steps",
+    "IGUI_TienCustomizableHotbar_StepsTooltip": "More items this slot uses, one after the other, after its own item. A step with the usual action follows the slot's item: when the slot takes its item out, the step takes its item out too, and when the slot puts its item back, so does the step. A step with an action from its item's menu always does that action.",
+    "IGUI_TienCustomizableHotbar_AddStep": "Add a step",
+    "IGUI_TienCustomizableHotbar_StepsFull": "%1 steps at most",
+    "IGUI_TienCustomizableHotbar_StepFollow": "Follow the slot's item",
+    "IGUI_TienCustomizableHotbar_StepFollowTooltip": "On: taken out when the slot's item is taken out, put back when it is put back. Off: taken out or put back on its own, like a slot of its own. Only for the usual action.",
+    "IGUI_TienCustomizableHotbar_MoveEarlier": "Move earlier",
+    "IGUI_TienCustomizableHotbar_MoveLater": "Move later",
+    "IGUI_TienCustomizableHotbar_RemoveStep": "Remove step",
+    "IGUI_TienCustomizableHotbar_TipStep": "Then: %1",
+    "IGUI_TienCustomizableHotbar_TipStepAction": "Then: %1 (%2)"
 }

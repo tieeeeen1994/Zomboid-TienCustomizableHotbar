@@ -6,6 +6,7 @@ Mod.MODDATA = "TienCustomizableHotbar"
 Mod.FILE = "TienCustomizableHotbar.ini"
 Mod.VERSION = 1
 Mod.MAX_SLOTS = 40
+Mod.MAX_STEPS = 8
 Mod.KEY_SLOTS = 20
 Mod.MENU_DEPTH = 6
 Mod.TREE_DEPTH = 6
@@ -48,13 +49,42 @@ function Mod.Data(player)
     return data
 end
 
+local function isEntry(entry)
+    return type(entry) == "table" and type(entry.type) == "string"
+end
+
+local function cleanSteps(slot)
+    local steps = slot.steps
+    if steps == nil then
+        return false
+    end
+    if type(steps) ~= "table" then
+        slot.steps = nil
+        return true
+    end
+    local clean = {}
+    for i = 1, #steps do
+        if isEntry(steps[i]) and #clean < Mod.MAX_STEPS then
+            table.insert(clean, steps[i])
+        end
+    end
+    if #clean == #steps then
+        return false
+    end
+    slot.steps = clean
+    return true
+end
+
 function Mod.Slots(player)
     local slots = Mod.Data(player).slots
     local clean = {}
     local broken = false
     for i = 1, #slots do
         local slot = slots[i]
-        if type(slot) == "table" and type(slot.type) == "string" then
+        if isEntry(slot) then
+            if cleanSteps(slot) then
+                broken = true
+            end
             table.insert(clean, slot)
         else
             broken = true
@@ -183,6 +213,101 @@ function Mod.SetSlotAction(player, index, rec)
         return
     end
     slot.action = Mod.CopyRecord(rec)
+    Mod.Changed(player)
+end
+
+function Mod.Steps(slot)
+    if type(slot.steps) == "table" then
+        return slot.steps
+    end
+    return {}
+end
+
+local function isSlotOf(player, slot)
+    for _, other in ipairs(Mod.Slots(player)) do
+        if other == slot then
+            return true
+        end
+    end
+    return false
+end
+
+local function stepIndex(slot, step)
+    for i, other in ipairs(Mod.Steps(slot)) do
+        if other == step then
+            return i
+        end
+    end
+    return nil
+end
+
+function Mod.AddStep(player, slot, item)
+    if not isSlotOf(player, slot) or #Mod.Steps(slot) >= Mod.MAX_STEPS then
+        return
+    end
+    if type(slot.steps) ~= "table" then
+        slot.steps = {}
+    end
+    table.insert(slot.steps, Mod.NewSlot(item))
+    Mod.RememberHome(player, item)
+    Mod.Changed(player)
+end
+
+function Mod.SetStepItem(player, slot, step, item)
+    if not isSlotOf(player, slot) or not stepIndex(slot, step) then
+        return
+    end
+    if step.type ~= item:getFullType() then
+        step.action = nil
+    end
+    step.id = item:getID()
+    step.type = item:getFullType()
+    Mod.RememberHome(player, item)
+    Mod.Changed(player)
+end
+
+function Mod.SetStepAction(player, slot, step, rec)
+    if not isSlotOf(player, slot) or not stepIndex(slot, step) then
+        return
+    end
+    step.action = Mod.CopyRecord(rec)
+    Mod.Changed(player)
+end
+
+function Mod.SetStepAlone(player, slot, step, alone)
+    if not isSlotOf(player, slot) or not stepIndex(slot, step) then
+        return
+    end
+    if alone then
+        step.alone = true
+    else
+        step.alone = nil
+    end
+    Mod.Changed(player)
+end
+
+function Mod.RemoveStep(player, slot, step)
+    local index = isSlotOf(player, slot) and stepIndex(slot, step)
+    if not index then
+        return
+    end
+    table.remove(slot.steps, index)
+    if #slot.steps == 0 then
+        slot.steps = nil
+    end
+    Mod.Changed(player)
+end
+
+function Mod.MoveStep(player, slot, step, delta)
+    local index = isSlotOf(player, slot) and stepIndex(slot, step)
+    if not index then
+        return
+    end
+    local target = index + delta
+    if target < 1 or target > #slot.steps then
+        return
+    end
+    slot.steps[index], slot.steps[target] = slot.steps[target], slot.steps[index]
     Mod.Changed(player)
 end
 

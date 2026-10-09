@@ -12,7 +12,7 @@ buttons, so you can move it anywhere and put its slots in the order you like.
 - Three ways to add one: click the **+** slot and pick it, drag it from the inventory window onto the bar (onto a slot
   to replace that slot's item), or right-click it in the inventory > **Add to Customizable Hotbar**.
 - Up to 40 slots.
-- Right-click a slot for **Action**, **Change item** and **Remove from hotbar**.
+- Right-click a slot for **Action**, **Change item**, **Steps** and **Remove from hotbar**.
 
 ### Using a slot
 
@@ -28,6 +28,15 @@ buttons, so you can move it anywhere and put its slots in the order you like.
 - **Any action from the item's menu.** Right-click a slot > **Action** and pick from a copy of the item's own menu
   (Drink, Take Pills, Turn On, Wear...). A blue dot marks a slot with its own action. When that action can't be done and
   the item is in your hands, the slot puts it away instead.
+- **Steps: several items from one slot.** Right-click a slot > **Steps** > **Add a step** and pick another item you
+  carry: pressing the slot then uses its own item and then each step's, one after the other (a pistol, then a
+  flashlight in the other hand). Up to 8 steps; a small "+2" on the slot shows how many. Each step can have its own
+  action from its item's menu (water bottle > Drink), can be moved earlier or later, changed or removed.
+  - A step with the usual action **follows the slot's item**: when the slot takes its item out, the step takes its
+    item out too (or leaves it if it's already out), and when the slot puts its item back, so does the step. Untick
+    **Follow the slot's item** to have a step take out or put back its item on its own.
+  - A step with its own action always does that action.
+  - Moving or another action stops the chain like any queued action.
 - Like the game's hotbar, a slot does nothing while you are busy with another action, attacking or paused.
 
 ### Keys
@@ -38,9 +47,11 @@ buttons, so you can move it anywhere and put its slots in the order you like.
 
 ### Looks
 
-- **Like the game's hotbar**: same frame, slot size, slot numbers (or the bound key), hover labels, item tooltip and
+- **Like the game's hotbar**: same frame, slot size, the bound key top left (nothing on a slot without a key), hover labels, item tooltip and
   equipped marker.
 - Hovering a slot says where the item is ("In: Big Hiking Bag", "In your hands") and which bag it goes back to.
+- **Shown with the game's hotbar**: it disappears whenever the game's hotbar does (the pause menu, the hide-UI key,
+  driving) and comes back with it.
 - **Settings** (the gear button, or right-click the bar): size (Small, Normal, Large), item names under the slots,
   vertical, reset position.
 
@@ -68,6 +79,8 @@ when the Customizable Hotbar is vertical). Hover a button to see what it does.
 - **Reordered slots stay that way**: the number keys follow the new order, and the order and the items on it are kept
   when you log out and back in, in single player and on a server. Belts and bags put on or taken off add and remove
   their slots as usual.
+- **Numbers only where there is a key**: a slot shows its number only while a key is bound to it (Options > Key
+  Bindings > Hotbar 1-8), so slots past 8 or unbound ones have none.
 - Everything else works as before: click or press a number to use a slot, drop an item from the inventory onto a slot
   to attach it, right-click a slot for its menu.
 - This replaces **Reorder The Hotbar**: don't use the two together.

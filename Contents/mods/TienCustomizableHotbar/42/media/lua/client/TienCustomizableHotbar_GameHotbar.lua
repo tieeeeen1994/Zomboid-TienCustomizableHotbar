@@ -154,6 +154,28 @@ local function isOnSlot(hotbar, x, y)
     return index <= #hotbar.availableSlot and offset - (index - 1) * step < hotbar.slotWidth
 end
 
+function Game.SlotKey(index)
+    local ok, id = pcall(function()
+        return KeybindId["HOTBAR_" .. string.format("%d", index)]
+    end)
+    if not ok or not id then
+        return nil
+    end
+    local key = getCore():getKey(id:getId())
+    if not key or key == 0 then
+        return nil
+    end
+    return key
+end
+
+local function isSlotNumber(hotbar, text, x, y)
+    local index = type(text) == "string" and string.match(text, "^%d+$") and tonumber(text)
+    if not index or y ~= hotbar.margins + 2 then
+        return false
+    end
+    return x == hotbar.margins + 1 + (index - 1) * (hotbar.slotWidth + hotbar.slotPad) + 3
+end
+
 local function shiftedDraws(hotbar)
     if hotbar.tchShifted then
         return hotbar.tchShifted
@@ -179,6 +201,13 @@ local function shiftedDraws(hotbar)
         wrappers[name] = function(self, first, x, ...)
             return original(self, first, x + self.tchShift, ...)
         end
+    end
+    local drawText = wrappers.drawText
+    wrappers.drawText = function(self, text, x, y, ...)
+        if isSlotNumber(self, text, x, y) and not Game.SlotKey(tonumber(text)) then
+            return
+        end
+        return drawText(self, text, x, y, ...)
     end
     hotbar.tchShifted = wrappers
     return wrappers

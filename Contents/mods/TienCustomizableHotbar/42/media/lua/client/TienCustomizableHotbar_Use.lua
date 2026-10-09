@@ -17,7 +17,9 @@ function Then:update()
 end
 
 function Then:perform()
+    self:beginAddingActions()
     local ok, err = pcall(self.fn)
+    self:endAddingActions()
     if not ok then
         Mod.log(err)
     end
@@ -187,31 +189,63 @@ function Mod.DefaultUse(player, item)
     end
 end
 
-function Mod.Use(player, slot)
-    if not slot or not Mod.CanUseNow(player) then
-        return
-    end
-    local item = Mod.Resolve(player, slot)
+function Mod.RunEntry(player, entry, follow)
+    local item = Mod.Resolve(player, entry)
     if not item then
-        HaloTextHelper.addBadText(player, Mod.txt("NotCarried", Mod.SlotName(slot)))
-        return
+        HaloTextHelper.addBadText(player, Mod.txt("NotCarried", Mod.SlotName(entry)))
+        return nil
     end
-    if not slot.action then
+    if not entry.action then
+        local out = not Mod.IsHeldOrWorn(player, item)
+        if follow ~= nil and follow ~= out then
+            return follow
+        end
         Mod.DefaultUse(player, item)
-        return
+        return out
     end
     local playerNum = player:getPlayerNum()
-    local leaf = Mod.Match(Mod.BuildLeaves(playerNum, item), slot.action)
+    local leaf = Mod.Match(Mod.BuildLeaves(playerNum, item), entry.action)
     if leaf and leaf.available then
         if Mod.RememberHome(player, item) then
             Mod.Transmit(player)
         end
         Mod.RunLeaf(playerNum, leaf)
-        return
+        return nil
     end
     if Mod.IsHeldOrWorn(player, item) then
         Mod.PutAway(player, item)
+        return false
+    end
+    HaloTextHelper.addBadText(player, Mod.txt("CantNow", Mod.Label(entry.action)))
+    return nil
+end
+
+local function queueStep(player, steps, index, direction)
+    local step = steps[index]
+    if not step then
         return
     end
-    HaloTextHelper.addBadText(player, Mod.txt("CantNow", Mod.Label(slot.action)))
+    ISTimedActionQueue.add(Then:new(player, function()
+        if player:isDead() then
+            return
+        end
+        local follow = nil
+        if not step.alone then
+            follow = direction
+        end
+        Mod.RunEntry(player, step, follow)
+        queueStep(player, steps, index + 1, direction)
+    end))
+end
+
+function Mod.Use(player, slot)
+    if not slot or not Mod.CanUseNow(player) then
+        return
+    end
+    local direction = Mod.RunEntry(player, slot, nil)
+    local steps = {}
+    for i, step in ipairs(Mod.Steps(slot)) do
+        steps[i] = step
+    end
+    queueStep(player, steps, 1, direction)
 end
