@@ -1,0 +1,17 @@
+version=1
+title=Tien's Customizable Hotbar
+description=A second hotbar where any item you carry can go, even one deep in a bag. Press its slot and the item comes out of the bag into your hands; press again and it goes back where it came from.
+description=
+description=[list]
+description=[*][b]Any item you carry:[/b] click [i]+[/i] and pick from your inventory and every bag, or drag an item from the inventory window onto the bar. No belt or holster needed.
+description=[*][b]Out of the bag, into your hands:[/b] the slot takes the item out of its bag (at the game's usual transfer speed, so a rifle at the bottom of a hiking bag is slower than a knife on your belt) and equips it. Press again and it is put away and goes back into that bag.
+description=[*][b]Switching:[/b] with the gun out, press the knife's slot: the gun goes back into its bag, then the knife comes out.
+description=[*][b]Your item first:[/b] a slot remembers the exact item you put on it. If it isn't on you, another item of the same kind is used; with none on you the slot is greyed out.
+description=[*][b]Any action from the item's menu:[/b] right-click a slot > [i]Action[/i] to drink, take pills, wear, or anything else the item's own menu offers.
+description=[*][b]Your keys:[/b] Options > Key Bindings > Tien's Customizable Hotbar has 20 slot keys, none bound at first. Clicking a slot always works.
+description=[*][b]Your layout:[/b] drag slots to reorder them, drag the bar by its grip, pick the size, show item names, make it vertical, lock it.
+description=[/list]
+description=
+description=Build 42 only. It uses the game's own timed actions, so it works in multiplayer like the vanilla hotbar. Slots are saved with the character; the bar's look and position on your computer.
+tags=Build 42;Interface
+visibility=public
