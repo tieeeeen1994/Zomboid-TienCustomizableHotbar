@@ -35,6 +35,7 @@
     "IGUI_TienCustomizableHotbar_TipOther": "(not the one you assigned)",
     "IGUI_TienCustomizableHotbar_TipAction": "Action: %1",
     "IGUI_TienCustomizableHotbar_SizeNormal": "Normal (like the game's hotbar)",
+    "IGUI_TienCustomizableHotbar_SizePlainNormal": "Normal",
     "IGUI_TienCustomizableHotbar_AddLabel": "Add an item: click, or drag one here",
     "IGUI_TienCustomizableHotbar_GameReset": "Put the game's hotbar back at the bottom",
     "IGUI_TienCustomizableHotbar_GameSettings": "Game's hotbar settings",

@@ -69,13 +69,16 @@ when the Customizable Hotbar is vertical). Hover a button to see what it does.
 - **Eye**:
   - on the Customizable Hotbar: hides it. Its slot keys keep working.
   - on the game's hotbar: shows or hides the Customizable Hotbar.
-- **Gear**: the bar's settings. For the game's hotbar: put it back at the bottom of the screen.
+- **Gear**: the bar's settings. For the game's hotbar: its size (Small, Normal, Large, the same steps as the
+  Customizable Hotbar's) and putting it back at the bottom of the screen.
 - **Snap together**: drag one bar close to the other and it snaps flush against it (above, below or beside, lined up by
   the edges or the centre). It stays docked: it keeps its place when either bar grows or shrinks and follows when you
   drag the other one. Drag it away by its own handle to undock it; hold Shift while dragging to move without snapping.
 
 ## The game's hotbar
 
+- **Its own size**: Small, Normal or Large from its gear button, independent of the Customizable Hotbar's. Slots,
+  items and buttons all scale; Normal is the game's own size.
 - **Reordered slots stay that way**: the number keys follow the new order, and the order and the items on it are kept
   when you log out and back in, in single player and on a server. Belts and bags put on or taken off add and remove
   their slots as usual.
@@ -90,7 +93,7 @@ when the Customizable Hotbar is vertical). Hover a button to see what it does.
 - **The Customizable Hotbar's slots** (which item, which action) and which bag each item goes back to are saved with the
   character (on the server in multiplayer).
 - **The game's hotbar slot order** is saved with the character, where the game keeps it.
-- **The bars' look, positions, docking, locks, swap / insert choices and whether the Customizable Hotbar is hidden** are
+- **The bars' look and sizes, positions, docking, locks, swap / insert choices and whether the Customizable Hotbar is hidden** are
   saved on your computer (`Zomboid/Lua/TienCustomizableHotbar.ini`) and follow you to every save and server.
 
 ## Compatibility

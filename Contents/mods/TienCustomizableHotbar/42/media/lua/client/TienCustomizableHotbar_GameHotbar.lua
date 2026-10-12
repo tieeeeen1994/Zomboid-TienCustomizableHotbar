@@ -14,7 +14,10 @@ local SHIFT_SECOND = { "drawText", "drawTextCentre", "drawTextRight", "drawTextu
     "drawTextureScaledAspect", "drawTextureScaledUniform", "drawItemIcon", "drawScriptItemIcon" }
 local ATTACH_ACTIONS = { ISAttachItemHotbar = true, ISDetachItemHotbar = true }
 
-local M = Mod.Tools.Metrics(1)
+local SLOT = 60
+local SPACING = 10
+local SIZE_KEYS = { "SizeSmall", "SizePlainNormal", "SizeLarge" }
+local NORMAL_METRICS = Mod.Tools.Metrics(1)
 
 local installed = false
 local renderFailed = false
@@ -33,6 +36,46 @@ end
 
 local function slotX(hotbar, index)
     return slotLeft(hotbar) + (index - 1) * (hotbar.slotWidth + hotbar.slotPad)
+end
+
+local function scaled(value, scale)
+    return math.floor(value * scale + 0.5)
+end
+
+function Game.ApplySize(hotbar)
+    local size = Mod.settings.gameSize or 2
+    if hotbar.tchSize == size then
+        return
+    end
+    local scale = Mod.SCALES[size] or 1
+    if hotbar.tchSize ~= nil or scale ~= 1 then
+        hotbar.slotWidth = scaled(SLOT, scale)
+        hotbar.slotHeight = scaled(SLOT, scale)
+        hotbar.slotPad = scaled(SPACING, scale)
+        hotbar.margins = scaled(SPACING, scale)
+        hotbar:setHeight(hotbar.slotHeight + hotbar.margins * 2 + 2)
+    end
+    hotbar.tchSize = size
+    hotbar.tchScale = scale
+    hotbar.tchMetrics = Mod.Tools.Metrics(scale)
+end
+
+function Game.SetSize(_, size)
+    local s = Mod.settings
+    if (s.gameSize or 2) == size then
+        return
+    end
+    s.gameSize = size
+    local hotbar = getPlayerHotbar(0)
+    if hotbar then
+        local oldHeight = hotbar.height
+        Game.ApplySize(hotbar)
+        if s.gameY then
+            s.gameY = s.gameY + oldHeight - hotbar.height
+        end
+        hotbar:setSizeAndPosition()
+    end
+    Mod.SaveSettings()
 end
 
 function Game.Place(hotbar)
@@ -113,13 +156,14 @@ function Game.Icons(hotbar)
 end
 
 function Game.Layout(hotbar)
+    local m = hotbar.tchMetrics or NORMAL_METRICS
     local inner = hotbar.width
-    local shift = M.grip
+    local shift = m.grip
     local icons = Game.Icons(hotbar)
-    local per, block = Mod.Tools.Block(M, #icons, hotbar.height)
+    local per, block = Mod.Tools.Block(m, #icons, hotbar.height)
     local tools = shift + inner - hotbar.margins - 1 + hotbar.slotPad
-    Mod.Tools.Layout(icons, M, false, tools, hotbar.height, per)
-    local full = tools + block + M.margin + 1
+    Mod.Tools.Layout(icons, m, false, tools, hotbar.height, per)
+    local full = tools + block + m.margin + 1
     hotbar.tchShift = shift
     hotbar.tchInner = inner
     hotbar.tchTools = tools
@@ -176,6 +220,28 @@ local function isSlotNumber(hotbar, text, x, y)
     return x == hotbar.margins + 1 + (index - 1) * (hotbar.slotWidth + hotbar.slotPad) + 3
 end
 
+local function scaledIcon(hotbar, tex, x, scale)
+    local stride = hotbar.slotWidth + hotbar.slotPad
+    local first = hotbar.margins + 1
+    local index = math.floor((x - first) / stride)
+    if index < 0 or index >= #hotbar.availableSlot then
+        return nil
+    end
+    local left = first + index * stride
+    local w, h = tex:getWidth(), tex:getHeight()
+    local sw, sh = w * scale, h * scale
+    if tex == hotbar.equippedItemIcon then
+        if math.abs(x - (left + hotbar.slotWidth - w - 5)) > 1 then
+            return nil
+        end
+        return left + hotbar.slotWidth - sw - 5 * scale, hotbar.height - hotbar.margins - sh - 5 * scale, sw, sh
+    end
+    if math.abs(x - (left + w / 2)) > 1 then
+        return nil
+    end
+    return left + w / 2 * scale, (hotbar.height - sh) / 2, sw, sh
+end
+
 local function shiftedDraws(hotbar)
     if hotbar.tchShifted then
         return hotbar.tchShifted
@@ -208,6 +274,18 @@ local function shiftedDraws(hotbar)
             return
         end
         return drawText(self, text, x, y, ...)
+    end
+    local drawTexture = wrappers.drawTexture
+    local drawTextureScaled = wrappers.drawTextureScaled
+    wrappers.drawTexture = function(self, tex, x, y, a, r, g, b)
+        local scale = self.tchScale or 1
+        if scale ~= 1 and tex and type(x) == "number" then
+            local nx, ny, w, h = scaledIcon(self, tex, x, scale)
+            if nx then
+                return drawTextureScaled(self, tex, nx, ny, w, h, a, r, g, b)
+            end
+        end
+        return drawTexture(self, tex, x, y, a, r, g, b)
     end
     hotbar.tchShifted = wrappers
     return wrappers
@@ -396,7 +474,9 @@ function Ghost:prerender()
     local tex = item and item:getTexture() or (slot and slot.texture)
     if tex then
         local alpha = item and 0.9 or 0.25
-        self:drawTexture(tex, (self.width - tex:getWidth()) / 2, (self.height - tex:getHeight()) / 2, alpha, 1, 1, 1)
+        local scale = self.hotbar.tchScale or 1
+        local w, h = tex:getWidth() * scale, tex:getHeight() * scale
+        self:drawTextureScaled(tex, (self.width - w) / 2, (self.height - h) / 2, w, h, alpha, 1, 1, 1)
     end
     if slot then
         local name = getTextOrNull("IGUI_HotbarAttachment_" .. slot.slotType) or slot.name or ""
@@ -528,6 +608,16 @@ function Game.Reset()
 end
 
 function Game.AddOptions(menu)
+    local current = Mod.settings.gameSize or 2
+    local sizeOption = menu:addOption(Mod.txt("Size"), nil, nil)
+    local sizes = menu:getNew(menu)
+    menu:addSubMenu(sizeOption, sizes)
+    for i, key in ipairs(SIZE_KEYS) do
+        local choice = sizes:addOption(Mod.txt(key), nil, Game.SetSize, i)
+        if current == i then
+            sizes:setOptionChecked(choice, true)
+        end
+    end
     menu:addOption(Mod.txt("GameReset"), nil, Game.Reset)
 end
 
@@ -581,6 +671,9 @@ local function install()
 
     local innerSize = ISHotbar.setSizeAndPosition
     function ISHotbar:setSizeAndPosition()
+        if isOurs(self) then
+            Game.ApplySize(self)
+        end
         innerSize(self)
         if isOurs(self) then
             Game.Layout(self)

@@ -11,6 +11,7 @@ local FONT_HGT_MEDIUM = getTextManager():getFontHeight(UIFont.Medium)
 
 local SCALES = { 0.75, 1, 1.25 }
 local SIZE_KEYS = { "SizeSmall", "SizeNormal", "SizeLarge" }
+Mod.SCALES = SCALES
 local SLOT = 60
 local SPACING = 10
 local ICON = 32
@@ -29,7 +30,7 @@ local BOOLEANS = { labels = true, vertical = true, locked = true, gameLocked = t
     gameSwap = true }
 
 local function defaultSettings()
-    return { size = 2, labels = false, vertical = false, locked = false, gameLocked = false, hidden = false,
+    return { size = 2, gameSize = 2, labels = false, vertical = false, locked = false, gameLocked = false, hidden = false,
         swap = false, gameSwap = false }
 end
 
@@ -44,10 +45,10 @@ function Mod.LoadSettings()
             local key, value = string.match(line, "^(%a+)=(.*)$")
             if key == "x" or key == "y" or key == "gameX" or key == "gameY" then
                 s[key] = tonumber(value)
-            elseif key == "size" then
+            elseif key == "size" or key == "gameSize" then
                 local n = tonumber(value)
                 if n and SCALES[n] then
-                    s.size = n
+                    s[key] = n
                 end
             elseif BOOLEANS[key] then
                 s[key] = value == "true"
@@ -88,6 +89,7 @@ function Mod.SaveSettings()
     writeNumber(writer, "gameY", s.gameY)
     writer:write("gameLocked=" .. tostring(s.gameLocked == true) .. "\n")
     writer:write("gameSwap=" .. tostring(s.gameSwap == true) .. "\n")
+    writeNumber(writer, "gameSize", s.gameSize)
     for _, prefix in ipairs({ "custom", "game" }) do
         local dock = Mod.Dock.Get(s, prefix)
         if dock then

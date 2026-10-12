@@ -117,7 +117,7 @@ from the item's menu like TienActionableHotbar.
     vanilla's hotbar).
   - Settings file `Zomboid/Lua/TienCustomizableHotbar.ini`: `version`, `x`, `y`, `size` (1-3: scale 0.75 / 1 / 1.25),
     `labels`, `vertical`, `locked`, `hidden`, `swap`, and for the game's hotbar `gameX` (its centre), `gameY` (its
-    top), `gameLocked`, `gameSwap`.
+    top), `gameLocked`, `gameSwap`, `gameSize` (1-3, same scales; `Mod.SCALES`).
 - `client/TienCustomizableHotbar_Tools.lua`: what both bars share: `Metrics(scale)` (grip column 12, icons 16, gap 2,
   margin 4, scaled), `Block` (how many icons fit across the bar, and the block's length along it), `Layout`, `At`,
   `Draw`, `DrawTip` (label box above the icon, or beside a vertical bar), `Click` (UIActivateButton sound),
@@ -168,6 +168,23 @@ from the item's menu like TienActionableHotbar.
     `attachedSlotType`, `attachedToModel` both ways, 42.21), and calls vanilla's `savePosition` (modData `hotbar` =
     slot types in order, `transmitModData`), which `loadPosition` reads back. The model location
     (`attachedToModel`) does not depend on the index, so nothing moves on the character. Number keys follow positions.
+  - Size (user's request 2026-10-12, "the same way the Customizable Hotbar can be resized"): `gameSize` in the game
+    hotbar's own gear menu (each bar's menu holds only its own options). Vanilla's whole geometry is four instance
+    fields (`slotWidth`, `slotHeight` 60, `slotPad`, `margins` 10) read by `render`, `getSlotIndexAt` and
+    `setSizeAndPosition`; the height is set only in `ISHotbar:new` (60 + 22). `Game.ApplySize` (from the
+    `setSizeAndPosition` wrapper, before vanilla's, so the width follows) scales the four fields (rounded like our
+    bar: Small 45 / 8, Large 75 / 13), `setHeight`, and keeps `tchScale` / `tchMetrics` (tool and grip columns via
+    `Tools.Metrics(scale)`, so both bars match at every size). It only writes when `gameSize` changes from what it
+    applied, and leaves the fields alone on a fresh hotbar at Normal: Item Condition Overlay (workshop 3641048285)
+    has its own `hotbarScale` that sets the same fields once per change, and Better Walkie Talkies' battery
+    (3779480293) draws from the fields, so both follow ours; using two scalers at once is not supported. Vanilla draws
+    item icons at native size at `slotX + w / 2` (centred only by chance in a 60 px slot) and the equipped marker at
+    `slotX + slotWidth - w - 5`; while scaled, the shifted `drawTexture` wrapper recognises those two formulas and
+    redraws them with `drawTextureScaled` at the scale (icon offset `w / 2 * scale`, vertically centred; marker inset
+    `5 * scale`); other textures pass through. Text stays in the Small font. Changing size keeps the saved bottom
+    edge (`gameY` moves by the height change). The slot ghost scales its icon. Checked with a lupa (Lua 5.5) harness
+    against vanilla's real `ISHotbar.lua` (scratchpad, 2026-10-12): layout, icon / marker rects and hit tests at all
+    three sizes, Normal drawing through vanilla's own path.
   - Safety net (`Game.Heal`, after every vanilla `reloadIcons`, player 0): an item whose saved index does not hold its
     `attachedSlotType` is renumbered to the slot of that type (and synced). Reorder The Hotbar's history (v3-v7) was
     items falling off after a reconnect when the server's indexes and the saved order disagreed: vanilla's `refresh`
@@ -235,6 +252,10 @@ from the item's menu like TienActionableHotbar.
 - Key binds with and without Shift; a bind on 1 also fires the vanilla hotbar (documented).
 - MP: slots and homes survive a reconnect (transmitModData); draws work on a server; the `Then` action never reaches the
   server. With ZomboidFixesB42's fast forward and TransferResync on.
+- Game's hotbar size: Small / Large / back to Normal from its gear; icons and the equipped marker sit inside the
+  slots; clicks, hover labels, tooltips, attach drops and slot reordering hit the right slot; docked to the
+  Customizable Hotbar at the same size the two line up; position (bottom edge) kept across a size change and a
+  restart; respawn (new hotbar) comes back at the saved size.
 - Tool columns: both bars line up at Normal size (same left and right ends); Small / Large / vertical / names on; icon
   tooltips; lock hides the grip; hide + the game hotbar's eye; the gear menus.
 - Game hotbar reordering: insert and swap, marker and ghost; a click still uses the slot; a drop on the grip or tools
