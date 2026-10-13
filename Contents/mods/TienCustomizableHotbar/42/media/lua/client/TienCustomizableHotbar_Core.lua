@@ -13,6 +13,10 @@ Mod.TREE_DEPTH = 6
 Mod.PARAMS = 10
 Mod.MAX_HOMES = 60
 Mod.LOOSE_FORGET_MS = 15000
+Mod.MAX_TEXT = 60
+Mod.MATCH_TYPE = "type"
+Mod.MATCH_FLUID = "fluid"
+Mod.MATCH_NAME = "name"
 
 Mod.silent = false
 Mod.version = 0
@@ -111,12 +115,76 @@ function Mod.ScriptItem(fullType)
     return getScriptManager():getItem(fullType)
 end
 
-function Mod.SlotName(slot)
-    local script = Mod.ScriptItem(slot.type)
+function Mod.TypeName(entry)
+    local script = Mod.ScriptItem(entry.type)
     if script then
         return script:getDisplayName()
     end
-    return slot.type
+    return entry.type
+end
+
+function Mod.MatchMode(entry)
+    if entry.match == Mod.MATCH_FLUID and type(entry.fluid) == "string" then
+        return Mod.MATCH_FLUID
+    end
+    if entry.match == Mod.MATCH_NAME and type(entry.text) == "string" and entry.text ~= "" then
+        return Mod.MATCH_NAME
+    end
+    return Mod.MATCH_TYPE
+end
+
+function Mod.FluidOf(item)
+    local container = item and item:getFluidContainer()
+    local fluid = container and container:getPrimaryFluid()
+    if fluid then
+        return fluid:getFluidTypeString()
+    end
+    return nil
+end
+
+function Mod.FluidName(id)
+    local fluid = Fluid.Get(id)
+    if fluid then
+        return fluid:getTranslatedName()
+    end
+    return id
+end
+
+function Mod.SlotName(slot)
+    local mode = Mod.MatchMode(slot)
+    if mode == Mod.MATCH_FLUID then
+        return Mod.FluidName(slot.fluid)
+    end
+    if mode == Mod.MATCH_NAME then
+        return Mod.txt("Quoted", slot.text)
+    end
+    return Mod.TypeName(slot)
+end
+
+local function plainPattern(text)
+    return (string.gsub(string.lower(text), "%p", function(c)
+        return "%" .. c
+    end))
+end
+
+function Mod.Matcher(entry)
+    local mode = Mod.MatchMode(entry)
+    if mode == Mod.MATCH_FLUID then
+        local fluid = entry.fluid
+        return function(item)
+            return Mod.FluidOf(item) == fluid
+        end
+    end
+    if mode == Mod.MATCH_NAME then
+        local pattern = plainPattern(entry.text)
+        return function(item)
+            return string.find(string.lower(item:getDisplayName()), pattern) ~= nil
+        end
+    end
+    local fullType = entry.type
+    return function(item)
+        return item:getFullType() == fullType
+    end
 end
 
 function Mod.NewSlot(item)
@@ -167,6 +235,9 @@ function Mod.SetSlotItem(player, index, item)
     end
     slot.id = item:getID()
     slot.type = item:getFullType()
+    if slot.match == Mod.MATCH_FLUID then
+        slot.fluid = Mod.FluidOf(item) or slot.fluid
+    end
     Mod.RememberHome(player, item)
     Mod.Changed(player)
 end
@@ -241,6 +312,38 @@ local function stepIndex(slot, step)
     return nil
 end
 
+function Mod.SetMatch(player, slot, step, mode, value, item)
+    if not isSlotOf(player, slot) then
+        return
+    end
+    local entry = slot
+    if step then
+        if not stepIndex(slot, step) then
+            return
+        end
+        entry = step
+    end
+    if mode == Mod.MATCH_FLUID and type(value) == "string" then
+        entry.match = mode
+        entry.fluid = value
+    elseif mode == Mod.MATCH_NAME and type(value) == "string" then
+        value = string.gsub(value, "[\r\n]", " ")
+        value = string.gsub(value, "^%s+", "")
+        value = string.gsub(value, "%s+$", "")
+        if value == "" then
+            return
+        end
+        entry.match = mode
+        entry.text = string.sub(value, 1, Mod.MAX_TEXT)
+        if item then
+            entry.liquid = item:getFluidContainer() ~= nil
+        end
+    else
+        entry.match = nil
+    end
+    Mod.Changed(player)
+end
+
 function Mod.AddStep(player, slot, item)
     if not isSlotOf(player, slot) or #Mod.Steps(slot) >= Mod.MAX_STEPS then
         return
@@ -262,6 +365,9 @@ function Mod.SetStepItem(player, slot, step, item)
     end
     step.id = item:getID()
     step.type = item:getFullType()
+    if step.match == Mod.MATCH_FLUID then
+        step.fluid = Mod.FluidOf(item) or step.fluid
+    end
     Mod.RememberHome(player, item)
     Mod.Changed(player)
 end
@@ -349,16 +455,25 @@ end
 
 function Mod.Resolve(player, slot)
     local inventory = player:getInventory()
+    local matches = Mod.Matcher(slot)
+    local assigned = nil
     if slot.id then
         local exact = inventory:getItemWithIDRecursiv(slot.id)
         if exact and exact:getFullType() == slot.type then
-            return exact, true
+            if matches(exact) then
+                return exact, true
+            end
+            assigned = exact
         end
     end
     local others = exactIds(player, slot)
+    local liquid = nil
+    if Mod.MatchMode(slot) == Mod.MATCH_NAME and type(slot.liquid) == "boolean" then
+        liquid = slot.liquid
+    end
     local best, bestScore = nil, -1
     Mod.EachItem(inventory, function(item, container)
-        if item:getFullType() == slot.type then
+        if matches(item) then
             local score = 1
             if player:isHandItem(item) then
                 score = 4
@@ -366,6 +481,12 @@ function Mod.Resolve(player, slot)
                 score = 3
             elseif container == inventory then
                 score = 2
+            end
+            if item:getFullType() == slot.type then
+                score = score + 5
+            end
+            if liquid ~= nil and (item:getFluidContainer() ~= nil) == liquid then
+                score = score + 8
             end
             if not item:isBroken() then
                 score = score + 10
@@ -379,6 +500,9 @@ function Mod.Resolve(player, slot)
         end
         return false
     end)
+    if not best and assigned then
+        return assigned, true
+    end
     return best, false
 end
 

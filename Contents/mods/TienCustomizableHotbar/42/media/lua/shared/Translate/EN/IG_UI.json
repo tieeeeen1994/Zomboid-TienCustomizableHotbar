@@ -58,5 +58,20 @@
     "IGUI_TienCustomizableHotbar_MoveLater": "Move later",
     "IGUI_TienCustomizableHotbar_RemoveStep": "Remove step",
     "IGUI_TienCustomizableHotbar_TipStep": "Then: %1",
-    "IGUI_TienCustomizableHotbar_TipStepAction": "Then: %1 (%2)"
+    "IGUI_TienCustomizableHotbar_TipStepAction": "Then: %1 (%2)",
+    "IGUI_TienCustomizableHotbar_Match": "When it is gone, use",
+    "IGUI_TienCustomizableHotbar_MatchTooltip": "When the item you assigned is used up or not on you, the slot uses another item you carry. This decides which items count.",
+    "IGUI_TienCustomizableHotbar_MatchType": "Same item: %1",
+    "IGUI_TienCustomizableHotbar_MatchTypeTooltip": "Any %1, fresh, stale or rotten, full or empty.",
+    "IGUI_TienCustomizableHotbar_MatchFluid": "Same liquid: %1",
+    "IGUI_TienCustomizableHotbar_MatchFluidTooltip": "Anything holding mostly this liquid, whatever the carton, bottle or can it is in.",
+    "IGUI_TienCustomizableHotbar_MatchFluidNone": "Same liquid",
+    "IGUI_TienCustomizableHotbar_MatchFluidNoneTooltip": "Only for an item that holds a liquid. Fill it, or carry a full one, to choose this.",
+    "IGUI_TienCustomizableHotbar_MatchNameAsk": "Name contains...",
+    "IGUI_TienCustomizableHotbar_MatchName": "Name contains: '%1'",
+    "IGUI_TienCustomizableHotbar_MatchNameTooltip": "Any item whose name has these words in it, as shown in your inventory (not case sensitive). 'Milk' finds cartons, bottles and cans of milk, but also a Milk Chocolate Bar.",
+    "IGUI_TienCustomizableHotbar_MatchNamePrompt": "Use any item whose name contains:",
+    "IGUI_TienCustomizableHotbar_Quoted": "'%1'",
+    "IGUI_TienCustomizableHotbar_TipMatchFluid": "Or any %1",
+    "IGUI_TienCustomizableHotbar_TipMatchName": "Or any item with '%1' in its name"
 }

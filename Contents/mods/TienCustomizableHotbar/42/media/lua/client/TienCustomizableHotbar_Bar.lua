@@ -722,6 +722,12 @@ function Bar:hoverLines(button)
             table.insert(lines, Mod.txt("TipHome", Mod.BagName(home)))
         end
     end
+    local mode = Mod.MatchMode(button.slot)
+    if mode == Mod.MATCH_FLUID then
+        table.insert(lines, Mod.txt("TipMatchFluid", Mod.FluidName(button.slot.fluid)))
+    elseif mode == Mod.MATCH_NAME then
+        table.insert(lines, Mod.txt("TipMatchName", button.slot.text))
+    end
     if button.slot.action then
         table.insert(lines, Mod.txt("TipAction", Mod.Label(button.slot.action)))
     end
@@ -1157,11 +1163,95 @@ function Bar:addActionMenu(context, info, pick)
     end
 end
 
+function Bar:askMatchText(player, slot, step, entry, item)
+    local default = entry.text
+    if type(default) ~= "string" or default == "" then
+        local fluid = Mod.FluidOf(item)
+        if fluid then
+            default = Mod.FluidName(fluid)
+        else
+            default = Mod.TypeName(entry)
+        end
+    end
+    local function accept(text)
+        Mod.SetMatch(player, slot, step, Mod.MATCH_NAME, text, item)
+    end
+    local width, height = 320, 180
+    local x = (getCore():getScreenWidth() - width) / 2
+    local y = (getCore():getScreenHeight() - height) / 2
+    local modal = ISTextBox:new(x, y, width, height, Mod.txt("MatchNamePrompt"), default, nil, function(_, button)
+        if button.internal == "OK" then
+            accept(button.parent.entry:getText())
+        end
+    end, 0)
+    modal.noEmpty = true
+    modal.maxChars = Mod.MAX_TEXT
+    modal:initialise()
+    modal:addToUIManager()
+    modal.entry.onCommandEntered = function()
+        modal:updateButtons()
+        if modal.yes.enable then
+            modal:onClick(modal.yes)
+        end
+    end
+    modal.entry:focus()
+    modal.entry:selectAll()
+end
+
+function Bar:addMatchMenu(context, player, slot, step, info)
+    local entry = info.entry
+    local mode = Mod.MatchMode(entry)
+    local matchOption = context:addOption(Mod.txt("Match"), nil, nil)
+    addTooltip(matchOption, Mod.txt("MatchTooltip"))
+    local menu = context:getNew(context)
+    context:addSubMenu(matchOption, menu)
+
+    local typeOption = menu:addOption(Mod.txt("MatchType", Mod.TypeName(entry)), player, function()
+        Mod.SetMatch(player, slot, step, Mod.MATCH_TYPE)
+    end)
+    addTooltip(typeOption, Mod.txt("MatchTypeTooltip"))
+    if mode == Mod.MATCH_TYPE then
+        menu:setOptionChecked(typeOption, true)
+    end
+
+    local fluid = Mod.FluidOf(info.item)
+    if mode == Mod.MATCH_FLUID and not fluid then
+        fluid = entry.fluid
+    end
+    local fluidOption
+    if fluid then
+        fluidOption = menu:addOption(Mod.txt("MatchFluid", Mod.FluidName(fluid)), player, function()
+            Mod.SetMatch(player, slot, step, Mod.MATCH_FLUID, fluid)
+        end)
+        addTooltip(fluidOption, Mod.txt("MatchFluidTooltip"))
+    else
+        fluidOption = menu:addOption(Mod.txt("MatchFluidNone"), nil, nil)
+        fluidOption.notAvailable = true
+        addTooltip(fluidOption, Mod.txt("MatchFluidNoneTooltip"))
+    end
+    if mode == Mod.MATCH_FLUID then
+        menu:setOptionChecked(fluidOption, true)
+    end
+
+    local nameText = Mod.txt("MatchNameAsk")
+    if mode == Mod.MATCH_NAME then
+        nameText = Mod.txt("MatchName", entry.text)
+    end
+    local nameOption = menu:addOption(nameText, self, function(bar)
+        bar:askMatchText(player, slot, step, entry, info.item)
+    end)
+    addTooltip(nameOption, Mod.txt("MatchNameTooltip"))
+    if mode == Mod.MATCH_NAME then
+        menu:setOptionChecked(nameOption, true)
+    end
+end
+
 function Bar:addStepMenu(stepMenu, player, slot, info, index, count)
     local step = info.entry
     self:addActionMenu(stepMenu, info, function(_, node)
         Mod.SetStepAction(player, slot, step, node and Mod.RecordFromLeaf(node) or nil)
     end)
+    self:addMatchMenu(stepMenu, player, slot, step, info)
     local changeOption = stepMenu:addOption(Mod.txt("ChangeItem"), nil, nil)
     local change = stepMenu:getNew(stepMenu)
     stepMenu:addSubMenu(changeOption, change)
@@ -1233,6 +1323,8 @@ function Bar:showSlotMenu(slot)
     self:addActionMenu(context, info, function(bar, node)
         bar:onPickAction(slot, node)
     end)
+
+    self:addMatchMenu(context, player, slot, nil, info)
 
     local changeOption = context:addOption(Mod.txt("ChangeItem"), nil, nil)
     local change = context:getNew(context)

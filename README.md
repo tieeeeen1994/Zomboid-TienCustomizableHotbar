@@ -25,6 +25,12 @@ buttons, so you can move it anywhere and put its slots in the order you like.
 - **Clothing and bags** are worn and taken off instead of held.
 - **Your item first.** A slot remembers the exact item you put on it. If that one isn't on you, another item of the same
   kind is used (a small amber dot shows it); with none on you the slot is faded out.
+- **Choose what "the same kind" means.** Right-click a slot (or a step) > **When it is gone, use**:
+  - **Same item** (the default): any item of that type, fresh, stale or rotten, full or empty.
+  - **Same liquid**: anything holding mostly that liquid, whatever it is in. A milk slot drinks Cow's Milk from a
+    carton, a glass bottle or a water bottle alike.
+  - **Name contains...**: type a word or two; any item with them in its name counts ('Milk' also finds sheep's milk,
+    canned milk... and the Milk Chocolate Bar, so items like the one you assigned are preferred).
 - **Any action from the item's menu.** Right-click a slot > **Action** and pick from a copy of the item's own menu
   (Drink, Take Pills, Turn On, Wear...). A blue dot marks a slot with its own action. When that action can't be done and
   the item is in your hands, the slot puts it away instead.

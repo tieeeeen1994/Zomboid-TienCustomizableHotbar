@@ -29,9 +29,21 @@ from the item's menu like TienActionableHotbar.
     sent with `transmitModData()` on every change (what vanilla's `ISHotbar:savePosition` does for its layout). Item IDs
     are stable across bags and on a server, so they identify "the exact item". `Mod.version` bumps on every change and
     the bar rebuilds.
-  - `Resolve(player, slot)`: the exact item (`getItemWithIDRecursiv`, same full type), else the best item of the type in
-    the tree: not assigned to another slot (+20), not broken (+10), then in hand > worn > main inventory > bag. Returns
-    `item, exact`.
+  - `Resolve(player, slot)`: the exact item (`getItemWithIDRecursiv`, same full type) if it passes the slot's matcher,
+    else the best matching item in the tree: not assigned to another slot (+20), not broken (+10), same kind (+8, name
+    mode only), same full type (+5), then in hand > worn > main inventory > bag; with none, the exact item even though
+    it no longer matches (an empty carton: its Drink then fails with the usual halo text). Returns `item, exact`.
+  - Matching (user's request 2026-10-13: "milk in any bottle"): `entry.match` nil / `"type"` (full type, the default),
+    `"fluid"` (+ `entry.fluid` = a fluid type string: `getPrimaryFluid():getFluidTypeString()` equal, any container; not `isPrimaryFluidType`, which is overloaded String / FluidType) or
+    `"name"` (+ `entry.text`, at most 60 chars: case-insensitive plain substring of `getDisplayName()`, punctuation
+    escaped with `%p`; `entry.liquid` = whether the item it was set from held a liquid, so "Milk" prefers cartons and
+    bottles over the Milk Chocolate Bar in the main inventory). Menu: slot / step > **When it is gone, use** (Same item /
+    Same liquid, greyed for an item holding no liquid / Name contains..., an `ISTextBox` with Enter wired). Changing a
+    fluid slot's item takes the new item's fluid. Why not exact names (told to the user): a fluid container's name is
+    built live as "liquid (container)" (`FluidContainer.getUiName`, so "Cow's Milk (Carton)" vs "Cow's Milk (Bottle)"),
+    with "(Sealed)" / "(Tainted)" / "Empty ..." / "Mixed Beverages" by state; food names get "Fresh, " / "Stale, " /
+    "Rotten, " / "Cooked, " prefixes (`Food.getName`); and names follow the game language. Checked with a lupa harness
+    against mocked items (scratchpad, 2026-10-13).
   - `EachItem` walks the main inventory and bags inside it, 6 deep (own walk: `getAllTypeRecurse` matches by its own
     type rules and gives no container).
   - Homes: the bag an item goes back to. Recorded when the item is seen in a bag on the player (`RememberHome`: at
@@ -238,6 +250,10 @@ from the item's menu like TienActionableHotbar.
   greys out Add. Walk mid-chain (stops). Hover lists the steps; "+n" badge at every size. MP: the `Then`s stay client
   side.
 - Two M16s: the assigned one is drawn; drop it: the other is used (amber dot); drop both: greyed, "You have no ...".
+- Matching: milk carton slot > Drink, **Same liquid**: drink it empty, then the slot uses Cow's Milk in a water bottle
+  from a bag (amber dot, hover "Or any Cow's Milk"); sheep's milk is not used. **Name contains** 'Milk' with a Milk
+  Chocolate Bar in the main inventory and milk in a bag: the milk is used. Same on a step. The choice survives a
+  reconnect; Enter confirms the text box.
 - Bag full or dropped while the gun is out: halo text, gun stays in the inventory.
 - Clothing / backpack slot: wear, take off, back into the bag.
 - Custom actions: whiskey > Drink > All from a bag; painkillers > Take Pills; flashlight > Turn on; "Equip Primary" on a
