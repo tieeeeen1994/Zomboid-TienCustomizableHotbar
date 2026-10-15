@@ -189,8 +189,31 @@ function Mod.DefaultUse(player, item)
     end
 end
 
+local function describe(item)
+    local container = item:getFluidContainer()
+    local amount = container and container:getAmount() or -1
+    local holder = item:getContainer() and item:getContainer():getType() or "?"
+    return string.format("%s id=%s fluid=%s amount=%s in=%s", item:getFullType(), tostring(item:getID()),
+        tostring(Mod.FluidOf(item)), tostring(amount), holder)
+end
+
+local function logMatch(player, entry, item, exact)
+    Mod.log(string.format("press: match=%s fluid=%s text=%s id=%s type=%s -> %s (exact=%s)",
+        tostring(entry.match), tostring(entry.fluid), tostring(entry.text), tostring(entry.id), tostring(entry.type),
+        item and describe(item) or "nothing", tostring(exact)))
+    Mod.EachItem(player:getInventory(), function(other)
+        if other:getFluidContainer() then
+            Mod.log("  carried: " .. describe(other))
+        end
+        return false
+    end)
+end
+
 function Mod.RunEntry(player, entry, follow)
-    local item = Mod.Resolve(player, entry)
+    local item, exact = Mod.Resolve(player, entry)
+    if entry.match ~= nil then
+        logMatch(player, entry, item, exact)
+    end
     if not item then
         HaloTextHelper.addBadText(player, Mod.txt("NotCarried", Mod.SlotName(entry)))
         return nil

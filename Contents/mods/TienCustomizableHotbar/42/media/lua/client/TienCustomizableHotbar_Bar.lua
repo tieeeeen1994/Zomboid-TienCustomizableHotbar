@@ -1209,7 +1209,7 @@ function Bar:addMatchMenu(context, player, slot, step, info)
     local typeOption = menu:addOption(Mod.txt("MatchType", Mod.TypeName(entry)), player, function()
         Mod.SetMatch(player, slot, step, Mod.MATCH_TYPE)
     end)
-    addTooltip(typeOption, Mod.txt("MatchTypeTooltip"))
+    addTooltip(typeOption, Mod.txt("MatchTypeTooltip", Mod.TypeName(entry)))
     if mode == Mod.MATCH_TYPE then
         menu:setOptionChecked(typeOption, true)
     end

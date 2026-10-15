@@ -13,6 +13,13 @@ The Lua source has no comments on purpose. Non-obvious reasoning lives here; upd
 First implementation 2026-10-09. The user has run it in game (dragging the game's hotbar works); the rest of "To verify"
 has not been confirmed. Lua checked with luaparser (syntax and free globals).
 
+Open bug (reported 2026-10-16, a player on the dedicated server, not reproduced): a Same liquid (Cow's Milk) slot
+went grey after a reconnect once its carton was drunk empty, although Cow's Milk was in a bag and the option stayed
+ticked. Ruled out by reading: the option and fluid id persist (ObjectModData → server player save), fluid ids are
+stable, Kahlua compares strings by content (`KahluaThread` opcode 23 `equals`), no Lua error in the log. Grey = the
+exact item is gone and `EachItem` matched nothing. `Mod.RunEntry` logs `[TienCustomizableHotbar] press:` (slot data,
+the pick, every carried fluid item) for slots with a match mode; remove `logMatch` once the cause is known.
+
 ## Origin
 
 The user first wanted items attached to a bag's hotbar slots to weigh as if inside the bag; that cannot be done from Lua
