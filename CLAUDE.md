@@ -58,6 +58,15 @@ from the item's menu like TienActionableHotbar.
     by hand from a bag goes back there. Forgotten only after the item has lain loose in the main inventory, not held or
     worn, for 15 s (`LOOSE_FORGET_MS`): long enough to cover the transfer → equip gap of a draw, short enough that moving
     the item into the main inventory on purpose sticks. Pruned to items still carried past 60 entries.
+  - Move to (user's request 2026-11-24: "move the item to a certain container plainly", not possible from the item's
+    menu, whose Move To is joypad only): an action record with `move = { to = "inventory" | "floor" | "bag", id, type }`
+    (the bag's item ID and full type) and path `{ "Move to", <name> }` for labels. `CopyRecord` keeps it, `Match`
+    ignores it, `RecordFromLeaf` passes a `{ record = rec }` pseudo-leaf through, a change of item keeps it.
+    `Mod.Move` (Use): the bag by ID, else the first carried bag of that type; if the resolved item is already there, the
+    first other carried item the slot's matcher takes that is not directly in it; refuses a bag into itself, a full or
+    refusing bag (floor: no check); then vanilla `ISInventoryPaneContextMenu.onMoveItemsTo` (unequips first, floor =
+    `onDropItems`, which skips favourites). The bar's Track then records the new bag as the item's home. Checked with
+    a lupa harness against mocked items (scratchpad, 2026-11-24).
   - Action records, `Snapshot`, `Match`, `FunctionName`: copied from TienActionableHotbar (each mod keeps its own copy).
     A slot's action is one record (no per-type / per-item scopes: the slot is the scope). `BuildLeaves` builds the item's
     menu silently (`Mod.silent`, `closeAll()` in the same frame) and skips this mod's and Actionable Hotbar's own options.
@@ -125,8 +134,13 @@ from the item's menu like TienActionableHotbar.
     swap squares): Lock, Swap / Insert, Hide, Settings (gear: the settings that were the right-click submenu; Lock left
     the menus for the icon). Hide sets `hidden` in the ini; `onTick` keeps the bar invisible, slot keys still work.
   - Inventory drops: a slot's / the bar's `onMouseUp` with `ISMouseDrag.dragging` set and no press of its own takes the
-    first dragged item carried by the player (onto a slot = replace its item, elsewhere = new slot), then ends the drag
-    the way `ISInventoryPage`'s container buttons do (`draggingFocus:onMouseUp(0, 0)`, both fields nil).
+    first dragged item carried by the player, ends the drag the way `ISInventoryPage`'s container buttons do
+    (`draggingFocus:onMouseUp(0, 0)`, both fields nil), then opens a small menu: onto a slot = replace its item / add
+    it as a new slot there, elsewhere = add. Until 2026-11-24 a drop replaced the slot's item at once: players dragging
+    a heavy item out of the inventory to drop it on the ground and letting go over the bar (it sits where the floor
+    is) had their slot silently turned into it (reported: a 'Canned' slot became a Propane Tank, a Milk slot a Car
+    Hood, both noticed only after a relog). Nothing else writes `slot.id` / `slot.type` (grep `SetSlotItem`), and
+    `Resolve` never returns an item of another type that fails the matcher, so the drop was the only way.
   - Item picker (+, bar right-click > Add an item, slot > Change item): one submenu per container (Inventory, then each
     bag), items grouped by full type and sorted by name; a type with several items opens a list of each (ammo and
     condition shown for weapons and clothing) so the exact one can be picked. The inventory context menu adds "Add to
@@ -261,6 +275,9 @@ from the item's menu like TienActionableHotbar.
   from a bag (amber dot, hover "Or any Cow's Milk"); sheep's milk is not used. **Name contains** 'Milk' with a Milk
   Chocolate Bar in the main inventory and milk in a bag: the milk is used. Same on a step. The choice survives a
   reconnect; Enter confirms the text box.
+- Drop an inventory item onto a slot / the bar: the menu asks; letting go and clicking elsewhere changes nothing.
+- Move to: canned slot (name 'Canned') > Move to > backpack, press several times: one can per press, then "Already in";
+  bag dropped: another bag of that type; Floor; a held item is unequipped first; main inventory full.
 - Bag full or dropped while the gun is out: halo text, gun stays in the inventory.
 - Clothing / backpack slot: wear, take off, back into the bag.
 - Custom actions: whiskey > Drink > All from a bag; painkillers > Take Pills; flashlight > Turn on; "Equip Primary" on a

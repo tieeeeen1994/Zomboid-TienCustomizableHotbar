@@ -230,7 +230,7 @@ function Mod.SetSlotItem(player, index, item)
         HaloTextHelper.addBadText(player, Mod.txt("AlreadyOn", string.format("%d", existing)))
         return
     end
-    if slot.type ~= item:getFullType() then
+    if slot.type ~= item:getFullType() and not (slot.action and slot.action.move) then
         slot.action = nil
     end
     slot.id = item:getID()
@@ -360,7 +360,7 @@ function Mod.SetStepItem(player, slot, step, item)
     if not isSlotOf(player, slot) or not stepIndex(slot, step) then
         return
     end
-    if step.type ~= item:getFullType() then
+    if step.type ~= item:getFullType() and not (step.action and step.action.move) then
         step.action = nil
     end
     step.id = item:getID()
@@ -629,11 +629,34 @@ function Mod.EncodeParam(value)
     return nil
 end
 
+local MOVE_TO = { inventory = true, floor = true, bag = true }
+
+function Mod.CopyMove(move)
+    if type(move) ~= "table" or not MOVE_TO[move.to] then
+        return nil
+    end
+    local out = { to = move.to }
+    if move.to == "bag" then
+        if type(move.type) ~= "string" then
+            return nil
+        end
+        out.type = move.type
+        out.id = tonumber(move.id)
+    end
+    return out
+end
+
 function Mod.CopyRecord(rec)
     if type(rec) ~= "table" or type(rec.path) ~= "table" then
         return nil
     end
     local out = { path = {}, params = {} }
+    if rec.move ~= nil then
+        out.move = Mod.CopyMove(rec.move)
+        if not out.move then
+            return nil
+        end
+    end
     if type(rec.fn) == "string" and rec.fn ~= "" then
         out.fn = rec.fn
     end
@@ -782,6 +805,9 @@ function Mod.Snapshot(menu, skip)
 end
 
 function Mod.RecordFromLeaf(leaf)
+    if leaf.record then
+        return leaf.record
+    end
     local rec = { path = {}, params = {}, fn = Mod.FunctionName(leaf.onSelect) }
     for i, part in ipairs(leaf.path) do
         rec.path[i] = part
@@ -814,7 +840,7 @@ local function sameParams(leaf, rec)
 end
 
 function Mod.Match(leaves, rec)
-    if not rec then
+    if not rec or rec.move then
         return nil
     end
     local fn = Mod.ResolveFunction(rec.fn)

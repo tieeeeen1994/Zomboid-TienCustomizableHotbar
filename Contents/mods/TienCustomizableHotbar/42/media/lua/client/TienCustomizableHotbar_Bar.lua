@@ -979,11 +979,20 @@ function Bar:dropItems(slot)
         HaloTextHelper.addBadText(player, Mod.txt("NotOnYou"))
         return
     end
+    local name = chosen:getDisplayName()
+    local context = ISContextMenu.get(0, getMouseX(), getMouseY())
     local index = slot and indexOf(player, slot)
     if index then
-        Mod.SetSlotItem(player, index, chosen)
+        local slotName = Mod.SlotName(slot)
+        local cached = self.cache[slot]
+        if cached and cached.item then
+            slotName = cached.item:getDisplayName()
+        end
+        local number = string.format("%d", index)
+        context:addOption(Mod.txt("DropReplace", name, number, slotName), player, Mod.SetSlotItem, index, chosen)
+        context:addOption(Mod.txt("DropInsert", name, number), player, Mod.AddSlot, chosen, index)
     else
-        Mod.AddSlot(player, chosen)
+        context:addOption(Mod.txt("DropAdd", name), player, Mod.AddSlot, chosen)
     end
 end
 
@@ -1145,6 +1154,32 @@ local function menuEntry(player, entry)
     return { entry = entry, item = item, leaves = leaves, nodes = nodes }
 end
 
+function Bar:addMoveMenu(menu, info, pick)
+    local player = getSpecificPlayer(0)
+    local current = info.entry.action and info.entry.action.move
+    local moveOption = menu:addOption(Mod.txt("MoveTo"), nil, nil)
+    addTooltip(moveOption, Mod.txt("MoveToTooltip"))
+    local sub = menu:getNew(menu)
+    menu:addSubMenu(moveOption, sub)
+    local function add(name, move, bag)
+        local rec = { path = { Mod.txt("MoveTo"), name }, params = {}, move = move }
+        local option = sub:addOption(name, self, pick, { record = rec })
+        if current and current.to == move.to and (move.to ~= "bag" or current.id == move.id) then
+            sub:setOptionChecked(option, true)
+        else
+            option.itemForTexture = bag
+        end
+    end
+    add(Mod.txt("Inventory"), { to = "inventory" })
+    Mod.EachItem(player:getInventory(), function(bag)
+        if instanceof(bag, "InventoryContainer") and bag ~= info.item then
+            add(Mod.BagName(bag), { to = "bag", id = bag:getID(), type = bag:getFullType() }, bag)
+        end
+        return false
+    end)
+    add(getText("ContextMenu_Floor"), { to = "floor" })
+end
+
 function Bar:addActionMenu(context, info, pick)
     local entry = info.entry
     local actionOption = context:addOption(Mod.txt("Action"), nil, nil)
@@ -1155,6 +1190,7 @@ function Bar:addActionMenu(context, info, pick)
     if not entry.action then
         actions:setOptionChecked(default, true)
     end
+    self:addMoveMenu(actions, info, pick)
     if info.item then
         self:mirror(actions, info.nodes, pick, Mod.Match(info.leaves, entry.action))
     else

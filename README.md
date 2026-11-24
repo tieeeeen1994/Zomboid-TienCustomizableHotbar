@@ -9,8 +9,8 @@ buttons, so you can move it anywhere and put its slots in the order you like.
 ### Putting items on it
 
 - **Any item you carry**, from your inventory or any bag you carry. No belt or holster needed.
-- Three ways to add one: click the **+** slot and pick it, drag it from the inventory window onto the bar (onto a slot
-  to replace that slot's item), or right-click it in the inventory > **Add to Customizable Hotbar**.
+- Three ways to add one: click the **+** slot and pick it, drag it from the inventory window onto the bar (a small
+  menu then asks: add it, or put it on the slot it was dropped on instead of that slot's item), or right-click it in the inventory > **Add to Customizable Hotbar**.
 - Up to 40 slots.
 - Right-click a slot for **Action**, **Change item**, **Steps** and **Remove from hotbar**.
 
@@ -34,6 +34,10 @@ buttons, so you can move it anywhere and put its slots in the order you like.
 - **Any action from the item's menu.** Right-click a slot > **Action** and pick from a copy of the item's own menu
   (Drink, Take Pills, Turn On, Wear...). A blue dot marks a slot with its own action. When that action can't be done and
   the item is in your hands, the slot puts it away instead.
+- **Move to a bag.** Right-click a slot > **Action** > **Move to** and pick your inventory, any bag you carry or the
+  floor: each press just moves the item there. If it is already there, another item the slot would use is moved
+  instead (a 'Canned' slot moving to a backpack moves one can after the other). If that bag is gone, another bag of the
+  same kind you carry is used.
 - **Steps: several items from one slot.** Right-click a slot > **Steps** > **Add a step** and pick another item you
   carry: pressing the slot then uses its own item and then each step's, one after the other (a pistol, then a
   flashlight in the other hand). Up to 8 steps; a small "+2" on the slot shows how many. Each step can have its own

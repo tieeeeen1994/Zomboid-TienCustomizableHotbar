@@ -8,7 +8,7 @@
     "IGUI_TienCustomizableHotbar_CantNow": "Can't do that now: %1",
     "IGUI_TienCustomizableHotbar_NoRoom": "No room in %1: kept in your inventory",
     "IGUI_TienCustomizableHotbar_Action": "Action",
-    "IGUI_TienCustomizableHotbar_ActionTooltip": "What clicking the slot or pressing its key does. The usual action takes the item out of its bag and puts it back afterwards; or pick any action from the item's own menu.",
+    "IGUI_TienCustomizableHotbar_ActionTooltip": "What clicking the slot or pressing its key does. The usual action takes the item out of its bag and puts it back afterwards; move it to a bag, your inventory or the floor; or pick any action from the item's own menu.",
     "IGUI_TienCustomizableHotbar_DefaultEquip": "Take out and equip, or put back (usual)",
     "IGUI_TienCustomizableHotbar_DefaultWear": "Wear, or take off and put back (usual)",
     "IGUI_TienCustomizableHotbar_CarryToPick": "Carry a %1 to choose its action",
@@ -73,5 +73,12 @@
     "IGUI_TienCustomizableHotbar_MatchNamePrompt": "Use any item whose name contains:",
     "IGUI_TienCustomizableHotbar_Quoted": "'%1'",
     "IGUI_TienCustomizableHotbar_TipMatchFluid": "Or any %1",
-    "IGUI_TienCustomizableHotbar_TipMatchName": "Or any item with '%1' in its name"
+    "IGUI_TienCustomizableHotbar_TipMatchName": "Or any item with '%1' in its name",
+    "IGUI_TienCustomizableHotbar_MoveTo": "Move to",
+    "IGUI_TienCustomizableHotbar_MoveToTooltip": "Each press moves the item there, nothing else. If it is already there, another item the slot would use is moved instead. A bag is remembered; if it is gone, another bag of the same kind you carry is used.",
+    "IGUI_TienCustomizableHotbar_AlreadyIn": "Already in %1",
+    "IGUI_TienCustomizableHotbar_NoRoomIn": "No room in %1",
+    "IGUI_TienCustomizableHotbar_DropReplace": "Put %1 on slot %2 (instead of %3)",
+    "IGUI_TienCustomizableHotbar_DropInsert": "Add %1 as a new slot %2",
+    "IGUI_TienCustomizableHotbar_DropAdd": "Add %1 to the Customizable Hotbar"
 }

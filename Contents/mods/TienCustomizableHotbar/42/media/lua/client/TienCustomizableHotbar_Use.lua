@@ -189,6 +189,69 @@ function Mod.DefaultUse(player, item)
     end
 end
 
+function Mod.MoveTarget(player, move)
+    if move.to == "inventory" then
+        return player:getInventory(), Mod.txt("Inventory")
+    end
+    if move.to == "floor" then
+        return ISInventoryPage.GetFloorContainer(player:getPlayerNum()), getText("ContextMenu_Floor")
+    end
+    local inventory = player:getInventory()
+    local bag = move.id and inventory:getItemWithIDRecursiv(move.id)
+    if not (bag and bag:getFullType() == move.type and instanceof(bag, "InventoryContainer")) then
+        bag = nil
+        Mod.EachItem(inventory, function(other)
+            if instanceof(other, "InventoryContainer") and other:getFullType() == move.type then
+                bag = other
+                return true
+            end
+            return false
+        end)
+    end
+    if bag and bag:getInventory() then
+        return bag:getInventory(), Mod.BagName(bag), bag
+    end
+    return nil, Mod.TypeName(move)
+end
+
+local function holds(item, bag)
+    return item == bag or (instanceof(item, "InventoryContainer") and item:getInventory() ~= nil
+        and item:getInventory():containsRecursive(bag))
+end
+
+function Mod.Move(player, entry, item, move)
+    local dest, name, bag = Mod.MoveTarget(player, move)
+    if not dest then
+        HaloTextHelper.addBadText(player, Mod.txt("NotCarried", name))
+        return
+    end
+    if item:getContainer() == dest then
+        local matches = Mod.Matcher(entry)
+        local other = nil
+        Mod.EachItem(player:getInventory(), function(candidate, container)
+            if container ~= dest and matches(candidate) and not (bag and holds(candidate, bag)) then
+                other = candidate
+                return true
+            end
+            return false
+        end)
+        if not other then
+            HaloTextHelper.addText(player, Mod.txt("AlreadyIn", name))
+            return
+        end
+        item = other
+    end
+    if bag and holds(item, bag) then
+        HaloTextHelper.addBadText(player, Mod.txt("NoRoomIn", name))
+        return
+    end
+    if move.to ~= "floor" and (not dest:isItemAllowed(item) or not dest:hasRoomFor(player, item)) then
+        HaloTextHelper.addBadText(player, Mod.txt("NoRoomIn", name))
+        return
+    end
+    ISInventoryPaneContextMenu.onMoveItemsTo({ item }, dest, player:getPlayerNum())
+end
+
 local function describe(item)
     local container = item:getFluidContainer()
     local amount = container and container:getAmount() or -1
@@ -225,6 +288,10 @@ function Mod.RunEntry(player, entry, follow)
         end
         Mod.DefaultUse(player, item)
         return out
+    end
+    if entry.action.move then
+        Mod.Move(player, entry, item, entry.action.move)
+        return nil
     end
     local playerNum = player:getPlayerNum()
     local leaf = Mod.Match(Mod.BuildLeaves(playerNum, item), entry.action)
