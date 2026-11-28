@@ -457,7 +457,12 @@ end
 --- best scoring match (first of the best in walk order), else its own item. Returns { [entry] = { item, exact } }.
 --- One walk for all slots and steps: walking once per entry was 13% of the game thread with a few thousand items
 --- carried (refreshCache, every 250 ms), most of it item:getFullType() asked again for each entry.
-function Mod.ResolveAll(player, entries)
+--- reuse (optional, the caller keeps it between calls): the last walk's answers, used again for up to WALK_REUSE_MS
+--- while every entry that needs a walk got its answer from a walk and that item is still on the player. Even one walk
+--- every 250 ms was 7% with thousands of items carried; a slot whose own item is used up still walks at once.
+local WALK_REUSE_MS = 2000
+
+function Mod.ResolveAll(player, entries, reuse)
     local inventory = player:getInventory()
     local results = {}
     local byType, byName, byFluid, unmatched = {}, {}, {}, {}
@@ -468,7 +473,14 @@ function Mod.ResolveAll(player, entries)
             results[entry] = result
             local done = false
             if entry.id then
-                local exact = inventory:getItemWithIDRecursiv(entry.id)
+                -- The item found last time, if it is still on the player: an ID is unique in the inventory tree, so the
+                -- search would find this same object. Searching the tree for every slot every refresh cost time with
+                -- thousands of items; it now runs only when that item has left (used up, dropped, re-sent).
+                local previous = reuse and reuse.last and reuse.last[entry]
+                local exact = previous and previous.exact and not previous.assigned and previous.item
+                if not (exact and exact:getID() == entry.id and Mod.IsOnPlayer(player, exact)) then
+                    exact = inventory:getItemWithIDRecursiv(entry.id)
+                end
                 if exact and exact:getFullType() == entry.type then
                     if Mod.Matcher(entry)(exact) then
                         result.item, result.exact = exact, true
@@ -500,6 +512,29 @@ function Mod.ResolveAll(player, entries)
                     table.insert(unmatched, pending)
                 end
             end
+        end
+    end
+
+    if anyPending and reuse and reuse.results and getTimestampMs() - (reuse.at or 0) < WALK_REUSE_MS then
+        local all = true
+        for entry, result in pairs(results) do
+            if not (result.item and result.exact and not result.assigned) then
+                local previous = reuse.results[entry]
+                if not (previous and previous.walked and (previous.item == nil or Mod.IsOnPlayer(player, previous.item))) then
+                    all = false
+                    break
+                end
+            end
+        end
+        if all then
+            for entry, result in pairs(results) do
+                if not (result.item and result.exact and not result.assigned) then
+                    local previous = reuse.results[entry]
+                    result.item, result.exact, result.walked = previous.item, previous.exact, true
+                end
+            end
+            reuse.last = results
+            return results
         end
     end
 
@@ -551,6 +586,7 @@ function Mod.ResolveAll(player, entries)
             return false
         end)
         local function finish(pending)
+            pending.result.walked = true
             if not pending.best and pending.result.assigned then
                 pending.result.item, pending.result.exact = pending.result.assigned, true
             else
@@ -561,6 +597,12 @@ function Mod.ResolveAll(player, entries)
         for _, pending in ipairs(byName) do finish(pending) end
         for _, pending in ipairs(unmatched) do finish(pending) end
         for _, list in pairs(byFluid) do for _, pending in ipairs(list) do finish(pending) end end
+    end
+    if anyPending and reuse then
+        reuse.at, reuse.results = getTimestampMs(), results
+    end
+    if reuse then
+        reuse.last = results
     end
     return results
 end

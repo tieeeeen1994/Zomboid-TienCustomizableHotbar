@@ -502,7 +502,10 @@ function Bar:refreshCache(force)
             end
         end
     end
-    for entry, result in pairs(Mod.ResolveAll(player, entries)) do
+    if force or not self.walkReuse then
+        self.walkReuse = {} -- a forced refresh walks, and later ones reuse that walk
+    end
+    for entry, result in pairs(Mod.ResolveAll(player, entries, self.walkReuse)) do
         self.cache[entry] = { item = result.item, exact = result.exact }
     end
 end
