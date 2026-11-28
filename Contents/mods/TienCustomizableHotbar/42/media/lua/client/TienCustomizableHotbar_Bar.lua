@@ -493,15 +493,17 @@ function Bar:refreshCache(force)
     if not player then
         return
     end
+    local entries = {}
     for _, button in ipairs(self.buttons) do
         if button.slot then
-            local item, exact = Mod.Resolve(player, button.slot)
-            self.cache[button.slot] = { item = item, exact = exact }
+            entries[#entries + 1] = button.slot
             for _, step in ipairs(Mod.Steps(button.slot)) do
-                local stepItem, stepExact = Mod.Resolve(player, step)
-                self.cache[step] = { item = stepItem, exact = stepExact }
+                entries[#entries + 1] = step
             end
         end
+    end
+    for entry, result in pairs(Mod.ResolveAll(player, entries)) do
+        self.cache[entry] = { item = result.item, exact = result.exact }
     end
 end
 

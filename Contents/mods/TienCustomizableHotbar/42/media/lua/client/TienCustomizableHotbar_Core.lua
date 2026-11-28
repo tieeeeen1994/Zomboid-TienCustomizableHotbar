@@ -453,57 +453,121 @@ local function exactIds(player, except)
     return ids
 end
 
-function Mod.Resolve(player, slot)
+--- Resolves every entry with one walk of the inventory. Per entry: its own item while that still matches, else the
+--- best scoring match (first of the best in walk order), else its own item. Returns { [entry] = { item, exact } }.
+--- One walk for all slots and steps: walking once per entry was 13% of the game thread with a few thousand items
+--- carried (refreshCache, every 250 ms), most of it item:getFullType() asked again for each entry.
+function Mod.ResolveAll(player, entries)
     local inventory = player:getInventory()
-    local matches = Mod.Matcher(slot)
-    local assigned = nil
-    if slot.id then
-        local exact = inventory:getItemWithIDRecursiv(slot.id)
-        if exact and exact:getFullType() == slot.type then
-            if matches(exact) then
-                return exact, true
+    local results = {}
+    local byType, byName, byFluid, unmatched = {}, {}, {}, {}
+    local anyPending, anyName, anyFluid = false, false, false
+    for _, entry in ipairs(entries) do
+        if not results[entry] then
+            local result = { item = nil, exact = false }
+            results[entry] = result
+            local done = false
+            if entry.id then
+                local exact = inventory:getItemWithIDRecursiv(entry.id)
+                if exact and exact:getFullType() == entry.type then
+                    if Mod.Matcher(entry)(exact) then
+                        result.item, result.exact = exact, true
+                        done = true
+                    else
+                        result.assigned = exact
+                    end
+                end
             end
-            assigned = exact
+            if not done then
+                anyPending = true
+                local mode = Mod.MatchMode(entry)
+                local pending = { entry = entry, result = result, others = exactIds(player, entry), bestScore = -1 }
+                if mode == Mod.MATCH_NAME and type(entry.liquid) == "boolean" then
+                    pending.liquid = entry.liquid
+                end
+                if mode == Mod.MATCH_FLUID then
+                    anyFluid = true
+                    byFluid[entry.fluid] = byFluid[entry.fluid] or {}
+                    table.insert(byFluid[entry.fluid], pending)
+                elseif mode == Mod.MATCH_NAME then
+                    anyName = true
+                    pending.pattern = plainPattern(entry.text)
+                    table.insert(byName, pending)
+                elseif entry.type ~= nil then
+                    byType[entry.type] = byType[entry.type] or {}
+                    table.insert(byType[entry.type], pending)
+                else
+                    table.insert(unmatched, pending)
+                end
+            end
         end
     end
-    local others = exactIds(player, slot)
-    local liquid = nil
-    if Mod.MatchMode(slot) == Mod.MATCH_NAME and type(slot.liquid) == "boolean" then
-        liquid = slot.liquid
-    end
-    local best, bestScore = nil, -1
-    Mod.EachItem(inventory, function(item, container)
-        if matches(item) then
-            local score = 1
+
+    if anyPending then
+        local function score(pending, item, container, fullType)
+            local value = 1
             if player:isHandItem(item) then
-                score = 4
+                value = 4
             elseif player:isEquippedClothing(item) then
-                score = 3
+                value = 3
             elseif container == inventory then
-                score = 2
+                value = 2
             end
-            if item:getFullType() == slot.type then
-                score = score + 5
+            if fullType == pending.entry.type then
+                value = value + 5
             end
-            if liquid ~= nil and (item:getFluidContainer() ~= nil) == liquid then
-                score = score + 8
+            if pending.liquid ~= nil and (item:getFluidContainer() ~= nil) == pending.liquid then
+                value = value + 8
             end
             if not item:isBroken() then
-                score = score + 10
+                value = value + 10
             end
-            if not others[item:getID()] then
-                score = score + 20
+            if not pending.others[item:getID()] then
+                value = value + 20
             end
-            if score > bestScore then
-                best, bestScore = item, score
+            if value > pending.bestScore then
+                pending.best, pending.bestScore = item, value
             end
         end
-        return false
-    end)
-    if not best and assigned then
-        return assigned, true
+        Mod.EachItem(inventory, function(item, container)
+            local fullType = item:getFullType()
+            local list = byType[fullType]
+            if list then
+                for _, pending in ipairs(list) do score(pending, item, container, fullType) end
+            end
+            if anyName then
+                local name = string.lower(item:getDisplayName())
+                for _, pending in ipairs(byName) do
+                    if string.find(name, pending.pattern) ~= nil then score(pending, item, container, fullType) end
+                end
+            end
+            if anyFluid then
+                local fluid = Mod.FluidOf(item)
+                list = fluid and byFluid[fluid]
+                if list then
+                    for _, pending in ipairs(list) do score(pending, item, container, fullType) end
+                end
+            end
+            return false
+        end)
+        local function finish(pending)
+            if not pending.best and pending.result.assigned then
+                pending.result.item, pending.result.exact = pending.result.assigned, true
+            else
+                pending.result.item, pending.result.exact = pending.best, false
+            end
+        end
+        for _, list in pairs(byType) do for _, pending in ipairs(list) do finish(pending) end end
+        for _, pending in ipairs(byName) do finish(pending) end
+        for _, pending in ipairs(unmatched) do finish(pending) end
+        for _, list in pairs(byFluid) do for _, pending in ipairs(list) do finish(pending) end end
     end
-    return best, false
+    return results
+end
+
+function Mod.Resolve(player, slot)
+    local result = Mod.ResolveAll(player, { slot })[slot]
+    return result.item, result.exact
 end
 
 function Mod.BagOf(player, item)
